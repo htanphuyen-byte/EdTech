@@ -10,10 +10,11 @@
 // Lưu ý: Nếu để trống projectId, ứng dụng sẽ tự động chạy ở chế độ Offline (localStorage).
 
 window.FIREBASE_CONFIG = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+  apiKey: "AIzaSyDU6IqRcYzXQ9PW7tUdZwl6IJ5vt6Dh-10",
+  authDomain: "edtech-a720e.firebaseapp.com",
+  projectId: "edtech-a720e",
+  storageBucket: "edtech-a720e.firebasestorage.app",
+  messagingSenderId: "980601456789",
+  appId: "1:980601456789:web:78d49c0bb91f24addfb39c",
+  measurementId: "G-F5JK815T0Y"
 };
