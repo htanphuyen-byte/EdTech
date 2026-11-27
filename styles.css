@@ -1,0 +1,181 @@
+/* Custom animations and kid-friendly 3D Secret Door styling */
+
+.border-3 {
+  border-width: 3px;
+}
+
+@keyframes bounceSlow {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.animate-bounce-slow {
+  animation: bounceSlow 2.6s ease-in-out infinite;
+}
+
+@keyframes popIn {
+  0% { opacity: 0; transform: scale(0.88) translateY(12px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.animate-pop-in {
+  animation: popIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes doorShake {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  15% { transform: translateX(-10px) rotate(-2deg); }
+  30% { transform: translateX(10px) rotate(2deg); }
+  45% { transform: translateX(-8px) rotate(-1.5deg); }
+  60% { transform: translateX(8px) rotate(1.5deg); }
+  75% { transform: translateX(-4px) rotate(-0.8deg); }
+}
+
+.animate-door-shake {
+  animation: doorShake 0.55s ease-in-out;
+}
+
+/* Floating background clouds & stars */
+.cloud {
+  position: absolute;
+  font-size: 3.5rem;
+  opacity: 0.45;
+  animation: floatCloud 22s linear infinite;
+}
+.cloud-1 { top: 10%; left: -10%; animation-duration: 28s; }
+.cloud-2 { top: 24%; left: -15%; font-size: 4.5rem; animation-duration: 36s; animation-delay: 6s; }
+
+@keyframes floatCloud {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(125vw); }
+}
+
+.star-bg {
+  position: absolute;
+  font-size: 1.8rem;
+  opacity: 0.5;
+  animation: twinkle 3.2s ease-in-out infinite;
+}
+.star-1 { top: 15%; right: 12%; }
+.star-2 { bottom: 18%; left: 10%; animation-delay: 1s; }
+.star-3 { bottom: 25%; right: 16%; animation-delay: 1.8s; }
+
+@keyframes twinkle {
+  0%, 100% { transform: scale(1) rotate(0deg); opacity: 0.45; }
+  50% { transform: scale(1.25) rotate(12deg); opacity: 0.9; }
+}
+
+/* Giant Secret Door */
+.secret-door {
+  perspective: 1100px;
+}
+
+.door-frame {
+  position: relative;
+  width: 240px;
+  height: 330px;
+  padding: 14px 14px 0 14px;
+  background: linear-gradient(180deg, #fbbf24 0%, #d97706 100%);
+  border-radius: 130px 130px 18px 18px;
+  box-shadow:
+    0 20px 35px rgba(30, 27, 75, 0.25),
+    inset 0 4px 10px rgba(255, 255, 255, 0.6);
+  border: 5px solid #92400e;
+}
+
+@media (min-width: 640px) {
+  .door-frame {
+    width: 270px;
+    height: 370px;
+  }
+}
+
+.door-inner-light {
+  position: absolute;
+  inset: 14px 14px 0 14px;
+  border-radius: 116px 116px 6px 6px;
+  background: radial-gradient(circle at center, #fef08a 0%, #f59e0b 65%, #b45309 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 30px rgba(255, 255, 255, 0.85);
+}
+
+.door-leaf {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 116px 116px 6px 6px;
+  background: linear-gradient(160deg, #8b5cf6 0%, #5b21b6 55%, #4c1d95 100%);
+  border: 4px solid #ddd6fe;
+  box-shadow: inset 0 6px 16px rgba(255, 255, 255, 0.25);
+  transform-origin: left center;
+  transition: transform 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 26px 20px 22px 20px;
+}
+
+.secret-door:hover .door-leaf {
+  filter: brightness(1.06);
+}
+
+.secret-door.is-open .door-leaf {
+  transform: rotateY(-108deg);
+}
+
+.door-panel {
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.door-panel-top {
+  height: 44%;
+  border-radius: 80px 80px 16px 16px;
+}
+
+.door-panel-bottom {
+  height: 36%;
+}
+
+.door-number-plate {
+  width: 68px;
+  height: 68px;
+  border-radius: 9999px;
+  background: linear-gradient(145deg, #fde047, #f59e0b);
+  border: 4px solid #fffbeb;
+  color: #78350f;
+  font-family: 'Baloo 2', cursive, sans-serif;
+  font-weight: 800;
+  font-size: 2.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.25);
+}
+
+.door-lock {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: transform 0.35s ease, opacity 0.35s ease;
+}
+
+.lock-body {
+  font-size: 2.6rem;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.35));
+}
+
+.secret-door.is-open .door-lock {
+  transform: translateY(-65%) scale(1.2);
+  opacity: 0;
+}

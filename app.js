@@ -1,0 +1,1021 @@
+(() => {
+  'use strict';
+
+  const STORAGE_KEY = 'kho_bau_tri_thuc_v1';
+  const ADMIN_CREDENTIALS = { username: 'admin', password: '123456' };
+
+  // ==================== SOUND ENGINE (Web Audio API) ====================
+  const SoundFX = {
+    enabled: true,
+    ctx: null,
+    getContext() {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) this.ctx = new AudioCtx();
+      }
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      }
+      return this.ctx;
+    },
+    playTone(freq, duration, type = 'sine', delay = 0, volume = 0.14) {
+      if (!this.enabled) return;
+      const ctx = this.getContext();
+      if (!ctx) return;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+      gain.gain.setValueAtTime(volume, ctx.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + delay);
+      osc.stop(ctx.currentTime + delay + duration);
+    },
+    wrong() {
+      this.playTone(220, 0.16, 'sawtooth', 0, 0.1);
+      this.playTone(170, 0.24, 'sawtooth', 0.14, 0.1);
+    },
+    unlock() {
+      this.playTone(523.25, 0.14, 'triangle', 0, 0.16);
+      this.playTone(659.25, 0.14, 'triangle', 0.1, 0.16);
+      this.playTone(783.99, 0.25, 'triangle', 0.2, 0.18);
+    },
+    victory() {
+      const notes = [523.25, 659.25, 783.99, 1046.5];
+      notes.forEach((n, i) => this.playTone(n, 0.22, 'triangle', i * 0.11, 0.18));
+      this.playTone(1046.5, 0.55, 'sine', 0.48, 0.2);
+    },
+  };
+
+  // ==================== CONFETTI / FIREWORKS ====================
+  const Confetti = (() => {
+    const canvas = document.getElementById('confetti-canvas');
+    const ctx = canvas.getContext('2d');
+    let particles = [];
+    let animId = null;
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    const colors = ['#f59e0b', '#ec4899', '#6366f1', '#10b981', '#3b82f6', '#f43f5e', '#facc15'];
+
+    function launch(count = 90) {
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height * 0.35 - 20,
+          vx: (Math.random() - 0.5) * 9,
+          vy: Math.random() * -6 - 2,
+          size: Math.random() * 8 + 5,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          rotation: Math.random() * Math.PI * 2,
+          vRot: (Math.random() - 0.5) * 0.25,
+          life: 1,
+        });
+      }
+      if (!animId) tick();
+    }
+
+    function tick() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      particles = particles.filter((p) => p.life > 0 && p.y < canvas.height + 30);
+      for (const p of particles) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.24;
+        p.rotation += p.vRot;
+        p.life -= 0.008;
+
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rotation);
+        ctx.globalAlpha = Math.max(0, p.life);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.65);
+        ctx.restore();
+      }
+      if (particles.length > 0) {
+        animId = requestAnimationFrame(tick);
+      } else {
+        animId = null;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+
+    return { launch };
+  })();
+
+  // ==================== DATA & STORAGE ====================
+  function createSeedData() {
+    return {
+      rooms: {
+        LOP3A: {
+          id: 'LOP3A',
+          title: 'Phòng mẫu Lớp 3A - Khám phá tri thức',
+          createdAt: Date.now(),
+          questions: [
+            {
+              id: 'q_seed_1',
+              type: 'multiple_choice',
+              prompt: 'Con vật nào sau đây thường kêu "Meo meo" và thích bắt chuột?',
+              options: ['Con chó', 'Con mèo', 'Con vịt', 'Con gà'],
+              correctIndex: 1,
+            },
+            {
+              id: 'q_seed_2',
+              type: 'multiple_choice',
+              prompt: 'Kết quả của phép tính 25 + 17 bằng bao nhiêu?',
+              options: ['32', '41', '42', '43'],
+              correctIndex: 2,
+            },
+            {
+              id: 'q_seed_3',
+              type: 'short_answer',
+              prompt: 'Một tuần lễ có tất cả mấy ngày? (Bé hãy điền số nhé)',
+              correctAnswer: '7',
+            },
+          ],
+          students: [],
+        },
+      },
+    };
+  }
+
+  function loadStore() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        const seed = createSeedData();
+        saveStore(seed);
+        return seed;
+      }
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || !parsed.rooms) {
+        const seed = createSeedData();
+        saveStore(seed);
+        return seed;
+      }
+      return parsed;
+    } catch {
+      const seed = createSeedData();
+      saveStore(seed);
+      return seed;
+    }
+  }
+
+  function saveStore(data) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }
+
+  // ==================== HELPERS ====================
+  function normalizeVietnameseName(name) {
+    return name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+      .replace(/[^a-zA-Z0-9]/g, '');
+  }
+
+  function generateStudentId(name) {
+    const clean = normalizeVietnameseName(name) || 'HocSinh';
+    const shortName = clean.slice(0, 12);
+    const digits = Math.floor(1000 + Math.random() * 9000);
+    return `HS_${shortName}_${digits}`;
+  }
+
+  function generateRoomId() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 5; i++) {
+      code += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return code;
+  }
+
+  function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    const colors = {
+      info: 'bg-indigo-600 text-white',
+      success: 'bg-emerald-600 text-white',
+      error: 'bg-rose-600 text-white',
+    };
+    const el = document.createElement('div');
+    el.className = `pointer-events-auto px-4 py-3 rounded-2xl shadow-xl font-bold text-sm ${colors[type] || colors.info} animate-pop-in`;
+    el.textContent = message;
+    container.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+  }
+
+  // ==================== APP STATE ====================
+  let store = loadStore();
+  let session = {
+    view: 'home', // 'home' | 'game' | 'victory' | 'admin'
+    roomId: null,
+    studentId: null,
+    adminLoggedIn: false,
+    adminSelectedRoomId: 'LOP3A',
+    adminTab: 'questions', // 'questions' | 'students'
+    isTransitioningDoor: false,
+  };
+
+  // ==================== DOM ELEMENTS ====================
+  const views = {
+    home: document.getElementById('view-home'),
+    game: document.getElementById('view-game'),
+    victory: document.getElementById('view-victory'),
+    admin: document.getElementById('view-admin'),
+  };
+
+  function switchView(viewName) {
+    session.view = viewName;
+    Object.entries(views).forEach(([key, el]) => {
+      el.classList.toggle('hidden', key !== viewName);
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // ==================== SOUND TOGGLE ====================
+  const btnSoundToggle = document.getElementById('btn-sound-toggle');
+  const soundIcon = document.getElementById('sound-icon');
+  const soundLabel = document.getElementById('sound-label');
+  btnSoundToggle.addEventListener('click', () => {
+    SoundFX.enabled = !SoundFX.enabled;
+    soundIcon.textContent = SoundFX.enabled ? '🔊' : '🔇';
+    soundLabel.textContent = SoundFX.enabled ? 'Âm thanh' : 'Đã tắt';
+  });
+
+  document.getElementById('btn-home-logo').addEventListener('click', () => {
+    if (session.view === 'admin') {
+      switchView('home');
+    } else if (session.view === 'game' || session.view === 'victory') {
+      session.roomId = null;
+      session.studentId = null;
+      switchView('home');
+    }
+  });
+
+  // ==================== HOME / STUDENT ENTRY ====================
+  const formStudentJoin = document.getElementById('form-student-join');
+  const inputRoomId = document.getElementById('input-room-id');
+  const inputStudentName = document.getElementById('input-student-name');
+  const homeErrorBox = document.getElementById('home-error-box');
+  const homeErrorText = document.getElementById('home-error-text');
+
+  function showHomeError(msg) {
+    homeErrorText.textContent = msg;
+    homeErrorBox.classList.remove('hidden');
+  }
+
+  function hideHomeError() {
+    homeErrorBox.classList.add('hidden');
+  }
+
+  document.getElementById('btn-fill-sample').addEventListener('click', () => {
+    inputRoomId.value = 'LOP3A';
+    if (!inputStudentName.value.trim()) {
+      inputStudentName.focus();
+    }
+    hideHomeError();
+  });
+
+  formStudentJoin.addEventListener('submit', (e) => {
+    e.preventDefault();
+    hideHomeError();
+    store = loadStore();
+
+    const roomId = inputRoomId.value.trim().toUpperCase();
+    const studentName = inputStudentName.value.trim();
+
+    if (!roomId) {
+      showHomeError('Bé hãy nhập Mã Phòng trước nhé!');
+      inputRoomId.focus();
+      return;
+    }
+    if (!studentName) {
+      showHomeError('Bé hãy nhập Tên của mình nhé!');
+      inputStudentName.focus();
+      return;
+    }
+
+    const room = store.rooms[roomId];
+    if (!room) {
+      showHomeError(`Không tìm thấy phòng "${roomId}". Bé kiểm tra lại mã phòng nhé!`);
+      return;
+    }
+
+    if (!room.questions || room.questions.length === 0) {
+      showHomeError(`Phòng "${roomId}" chưa có câu hỏi nào. Bé hãy nhờ thầy/cô thêm câu hỏi nhé!`);
+      return;
+    }
+
+    // Auto-generate hidden User ID and save student to room
+    const userId = generateStudentId(studentName);
+    const newStudent = {
+      userId,
+      name: studentName,
+      currentDoorIndex: 0,
+      wrongCount: 0,
+      status: 'playing', // 'playing' | 'completed'
+      joinedAt: Date.now(),
+    };
+
+    room.students.push(newStudent);
+    saveStore(store);
+
+    session.roomId = roomId;
+    session.studentId = userId;
+    session.isTransitioningDoor = false;
+
+    renderGameView();
+    switchView('game');
+  });
+
+  // ==================== STUDENT GAMEPLAY ====================
+  const secretDoor = document.getElementById('secret-door');
+  const doorPlateNumber = document.getElementById('door-plate-number');
+  const doorNumberBadge = document.getElementById('door-number-badge');
+  const doorTotalBadge = document.getElementById('door-total-badge');
+  const hudRoomId = document.getElementById('hud-room-id');
+  const hudStudentName = document.getElementById('hud-student-name');
+  const hudWrongCount = document.getElementById('hud-wrong-count');
+  const hudDoorsTrack = document.getElementById('hud-doors-track');
+
+  const modalQuestion = document.getElementById('modal-question');
+  const modalQuestionCard = document.getElementById('modal-question-card');
+  const modalDoorIndex = document.getElementById('modal-door-index');
+  const modalQuestionPrompt = document.getElementById('modal-question-prompt');
+  const modalMcOptions = document.getElementById('modal-mc-options');
+  const modalSaForm = document.getElementById('modal-sa-form');
+  const modalSaInput = document.getElementById('modal-sa-input');
+  const modalFeedback = document.getElementById('modal-feedback');
+  const modalFeedbackIcon = document.getElementById('modal-feedback-icon');
+  const modalFeedbackText = document.getElementById('modal-feedback-text');
+
+  function getActiveRoomAndStudent() {
+    if (!session.roomId || !session.studentId) return { room: null, student: null };
+    const room = store.rooms[session.roomId];
+    if (!room) return { room: null, student: null };
+    const student = room.students.find((s) => s.userId === session.studentId);
+    return { room, student };
+  }
+
+  function renderGameView() {
+    const { room, student } = getActiveRoomAndStudent();
+    if (!room || !student) {
+      switchView('home');
+      return;
+    }
+
+    const total = room.questions.length;
+    const currentIdx = Math.min(student.currentDoorIndex, total - 1);
+
+    hudRoomId.textContent = room.id;
+    hudStudentName.textContent = student.name;
+    hudWrongCount.textContent = student.wrongCount;
+
+    doorNumberBadge.textContent = currentIdx + 1;
+    doorTotalBadge.textContent = total;
+    doorPlateNumber.textContent = currentIdx + 1;
+
+    secretDoor.classList.remove('is-open', 'animate-door-shake');
+
+    // Render progress pills
+    hudDoorsTrack.innerHTML = '';
+    room.questions.forEach((_, idx) => {
+      const pill = document.createElement('div');
+      if (idx < student.currentDoorIndex) {
+        pill.className = 'w-9 h-9 rounded-full bg-emerald-500 text-white font-extrabold flex items-center justify-center shadow-sm text-sm';
+        pill.textContent = '✓';
+        pill.title = `Cửa ${idx + 1}: Đã mở`;
+      } else if (idx === student.currentDoorIndex) {
+        pill.className = 'w-10 h-10 rounded-full bg-amber-400 text-amber-950 border-2 border-amber-600 font-extrabold flex items-center justify-center shadow-md text-base animate-pulse';
+        pill.textContent = idx + 1;
+        pill.title = `Cửa ${idx + 1}: Đang giải mã`;
+      } else {
+        pill.className = 'w-9 h-9 rounded-full bg-slate-200 text-slate-500 font-extrabold flex items-center justify-center text-sm';
+        pill.textContent = '🔒';
+        pill.title = `Cửa ${idx + 1}: Chưa mở`;
+      }
+      hudDoorsTrack.appendChild(pill);
+    });
+  }
+
+  function openCurrentQuestionModal() {
+    if (session.isTransitioningDoor) return;
+    const { room, student } = getActiveRoomAndStudent();
+    if (!room || !student) return;
+
+    const q = room.questions[student.currentDoorIndex];
+    if (!q) return;
+
+    modalDoorIndex.textContent = student.currentDoorIndex + 1;
+    modalQuestionPrompt.textContent = q.prompt;
+    hideModalFeedback();
+
+    if (q.type === 'multiple_choice') {
+      modalMcOptions.classList.remove('hidden');
+      modalSaForm.classList.add('hidden');
+      modalMcOptions.innerHTML = '';
+
+      const letters = ['A', 'B', 'C', 'D'];
+      const badgeColors = [
+        'bg-sky-100 text-sky-700',
+        'bg-amber-100 text-amber-700',
+        'bg-emerald-100 text-emerald-700',
+        'bg-purple-100 text-purple-700',
+      ];
+
+      q.options.forEach((optText, idx) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'w-full text-left px-4 py-3.5 rounded-2xl border-3 border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/70 transition flex items-center gap-3 font-bold text-lg text-slate-800 cursor-pointer';
+        btn.innerHTML = `
+          <span class="w-9 h-9 rounded-xl ${badgeColors[idx]} font-display font-extrabold flex items-center justify-center shrink-0">${letters[idx]}</span>
+          <span>${escapeHtml(optText)}</span>
+        `;
+        btn.addEventListener('click', () => handleAnswerAttempt(idx === q.correctIndex, btn));
+        modalMcOptions.appendChild(btn);
+      });
+    } else {
+      modalMcOptions.classList.add('hidden');
+      modalSaForm.classList.remove('hidden');
+      modalSaInput.value = '';
+      setTimeout(() => modalSaInput.focus(), 80);
+    }
+
+    modalQuestion.classList.remove('hidden');
+  }
+
+  function closeQuestionModal() {
+    modalQuestion.classList.add('hidden');
+  }
+
+  function showModalFeedback(isCorrect, text) {
+    modalFeedback.classList.remove('hidden', 'bg-rose-50', 'border-2', 'border-rose-300', 'text-rose-700', 'bg-emerald-50', 'border-emerald-300', 'text-emerald-700');
+    if (isCorrect) {
+      modalFeedback.classList.add('bg-emerald-50', 'border-2', 'border-emerald-300', 'text-emerald-700');
+      modalFeedbackIcon.textContent = '🌟';
+    } else {
+      modalFeedback.classList.add('bg-rose-50', 'border-2', 'border-rose-300', 'text-rose-700');
+      modalFeedbackIcon.textContent = '🔒';
+    }
+    modalFeedbackText.textContent = text;
+  }
+
+  function hideModalFeedback() {
+    modalFeedback.classList.add('hidden');
+  }
+
+  function triggerShake(el) {
+    el.classList.remove('animate-door-shake');
+    void el.offsetWidth;
+    el.classList.add('animate-door-shake');
+  }
+
+  function handleAnswerAttempt(isCorrect, clickedBtn = null) {
+    if (session.isTransitioningDoor) return;
+    const { room, student } = getActiveRoomAndStudent();
+    if (!room || !student) return;
+
+    if (!isCorrect) {
+      // WRONG ANSWER: Increment wrong count, shake door & modal, block advancing
+      student.wrongCount += 1;
+      saveStore(store);
+      hudWrongCount.textContent = student.wrongCount;
+
+      SoundFX.wrong();
+      triggerShake(modalQuestionCard);
+      triggerShake(secretDoor);
+
+      if (clickedBtn) {
+        clickedBtn.classList.add('border-rose-400', 'bg-rose-50');
+      }
+
+      showModalFeedback(false, 'Ôi chưa đúng rồi, cánh cửa vẫn khóa chặt! Bé hãy suy nghĩ lại nhé!');
+      return;
+    }
+
+    // CORRECT ANSWER: Praise, fireworks, open door, save progress
+    session.isTransitioningDoor = true;
+    SoundFX.unlock();
+    Confetti.launch(75);
+    showModalFeedback(true, 'Tuyệt vời! Bé trả lời chính xác rồi! Cánh cửa đang mở ra...');
+
+    if (clickedBtn) {
+      clickedBtn.classList.add('border-emerald-500', 'bg-emerald-50');
+    }
+
+    setTimeout(() => {
+      closeQuestionModal();
+      secretDoor.classList.add('is-open');
+
+      setTimeout(() => {
+        student.currentDoorIndex += 1;
+        if (student.currentDoorIndex >= room.questions.length) {
+          student.status = 'completed';
+          student.completedAt = Date.now();
+          saveStore(store);
+          session.isTransitioningDoor = false;
+          renderVictoryView(room, student);
+          switchView('victory');
+          SoundFX.victory();
+          Confetti.launch(150);
+        } else {
+          saveStore(store);
+          session.isTransitioningDoor = false;
+          renderGameView();
+        }
+      }, 950);
+    }, 800);
+  }
+
+  modalSaForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const { room, student } = getActiveRoomAndStudent();
+    if (!room || !student) return;
+    const q = room.questions[student.currentDoorIndex];
+    if (!q) return;
+
+    const userAns = modalSaInput.value.trim().toLowerCase();
+    const expected = String(q.correctAnswer || '').trim().toLowerCase();
+    if (!userAns) {
+      showModalFeedback(false, 'Bé hãy nhập câu trả lời vào ô trống nhé!');
+      modalSaInput.focus();
+      return;
+    }
+    handleAnswerAttempt(userAns === expected);
+  });
+
+  secretDoor.addEventListener('click', openCurrentQuestionModal);
+  secretDoor.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openCurrentQuestionModal();
+    }
+  });
+  document.getElementById('btn-open-question').addEventListener('click', openCurrentQuestionModal);
+  document.getElementById('btn-close-question-modal').addEventListener('click', closeQuestionModal);
+
+  document.getElementById('btn-exit-game').addEventListener('click', () => {
+    session.roomId = null;
+    session.studentId = null;
+    switchView('home');
+  });
+
+  // ==================== VICTORY VIEW ====================
+  function renderVictoryView(room, student) {
+    document.getElementById('victory-student-name').textContent = student.name;
+    document.getElementById('victory-doors-count').textContent = `${room.questions.length}/${room.questions.length}`;
+    document.getElementById('victory-wrong-count').textContent = student.wrongCount;
+  }
+
+  document.getElementById('btn-victory-home').addEventListener('click', () => {
+    session.roomId = null;
+    session.studentId = null;
+    inputStudentName.value = '';
+    switchView('home');
+  });
+
+  // ==================== ADMIN LOGIN ====================
+  const modalAdminLogin = document.getElementById('modal-admin-login');
+  const formAdminLogin = document.getElementById('form-admin-login');
+  const adminLoginUser = document.getElementById('admin-login-user');
+  const adminLoginPass = document.getElementById('admin-login-pass');
+  const adminLoginError = document.getElementById('admin-login-error');
+
+  document.getElementById('btn-admin-open').addEventListener('click', () => {
+    if (session.adminLoggedIn) {
+      renderAdminDashboard();
+      switchView('admin');
+      return;
+    }
+    adminLoginError.classList.add('hidden');
+    adminLoginUser.value = '';
+    adminLoginPass.value = '';
+    modalAdminLogin.classList.remove('hidden');
+    setTimeout(() => adminLoginUser.focus(), 60);
+  });
+
+  document.getElementById('btn-close-admin-login').addEventListener('click', () => {
+    modalAdminLogin.classList.add('hidden');
+  });
+
+  formAdminLogin.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const u = adminLoginUser.value.trim();
+    const p = adminLoginPass.value;
+    if (u === ADMIN_CREDENTIALS.username && p === ADMIN_CREDENTIALS.password) {
+      session.adminLoggedIn = true;
+      modalAdminLogin.classList.add('hidden');
+      renderAdminDashboard();
+      switchView('admin');
+    } else {
+      adminLoginError.textContent = 'Sai tên đăng nhập hoặc mật khẩu! (Mặc định: admin / 123456)';
+      adminLoginError.classList.remove('hidden');
+    }
+  });
+
+  document.getElementById('btn-admin-logout').addEventListener('click', () => {
+    session.adminLoggedIn = false;
+    switchView('home');
+  });
+
+  // ==================== ADMIN DASHBOARD ====================
+  const adminRoomList = document.getElementById('admin-room-list');
+  const adminRoomEmptyState = document.getElementById('admin-room-empty-state');
+  const adminRoomWorkspace = document.getElementById('admin-room-workspace');
+  const adminActiveRoomId = document.getElementById('admin-active-room-id');
+  const adminActiveRoomTitle = document.getElementById('admin-active-room-title');
+  const tabBtnQuestions = document.getElementById('tab-btn-questions');
+  const tabBtnStudents = document.getElementById('tab-btn-students');
+  const adminTabQuestions = document.getElementById('admin-tab-questions');
+  const adminTabStudents = document.getElementById('admin-tab-students');
+  const tabCountQuestions = document.getElementById('tab-count-questions');
+  const tabCountStudents = document.getElementById('tab-count-students');
+
+  // Create Room
+  document.getElementById('btn-random-room-id').addEventListener('click', () => {
+    document.getElementById('admin-new-room-id').value = generateRoomId();
+  });
+
+  document.getElementById('form-create-room').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const idInput = document.getElementById('admin-new-room-id');
+    const titleInput = document.getElementById('admin-new-room-title');
+    const roomId = idInput.value.trim().toUpperCase();
+    const title = titleInput.value.trim();
+
+    if (!roomId) {
+      showToast('Vui lòng nhập Mã Phòng!', 'error');
+      idInput.focus();
+      return;
+    }
+    if (store.rooms[roomId]) {
+      showToast(`Mã phòng "${roomId}" đã tồn tại!`, 'error');
+      return;
+    }
+
+    store.rooms[roomId] = {
+      id: roomId,
+      title: title || `Phòng ${roomId}`,
+      createdAt: Date.now(),
+      questions: [],
+      students: [],
+    };
+    saveStore(store);
+    session.adminSelectedRoomId = roomId;
+    idInput.value = '';
+    titleInput.value = '';
+    resetQuestionForm();
+    renderAdminDashboard();
+    showToast(`Đã tạo phòng ${roomId}!`, 'success');
+  });
+
+  // Switch Admin Tabs
+  function setAdminTab(tab) {
+    session.adminTab = tab;
+    const isQ = tab === 'questions';
+    adminTabQuestions.classList.toggle('hidden', !isQ);
+    adminTabStudents.classList.toggle('hidden', isQ);
+
+    tabBtnQuestions.className = isQ
+      ? 'px-4 py-2 rounded-xl font-extrabold text-sm transition cursor-pointer bg-white text-indigo-700 shadow-sm'
+      : 'px-4 py-2 rounded-xl font-extrabold text-sm transition cursor-pointer text-slate-600 hover:text-indigo-700';
+
+    tabBtnStudents.className = !isQ
+      ? 'px-4 py-2 rounded-xl font-extrabold text-sm transition cursor-pointer bg-white text-indigo-700 shadow-sm'
+      : 'px-4 py-2 rounded-xl font-extrabold text-sm transition cursor-pointer text-slate-600 hover:text-indigo-700';
+  }
+
+  tabBtnQuestions.addEventListener('click', () => setAdminTab('questions'));
+  tabBtnStudents.addEventListener('click', () => {
+    store = loadStore();
+    setAdminTab('students');
+    renderAdminStudentTable();
+  });
+
+  document.getElementById('btn-refresh-students').addEventListener('click', () => {
+    store = loadStore();
+    renderAdminDashboard();
+    showToast('Đã cập nhật dữ liệu mới nhất!', 'info');
+  });
+
+  // Question Form Logic
+  const formQuestion = document.getElementById('form-question');
+  const qEditId = document.getElementById('q-edit-id');
+  const qPrompt = document.getElementById('q-prompt');
+  const qType = document.getElementById('q-type');
+  const qMcFields = document.getElementById('q-mc-fields');
+  const qSaFields = document.getElementById('q-sa-fields');
+  const qShortAnswer = document.getElementById('q-short-answer');
+  const questionFormHeading = document.getElementById('question-form-heading');
+  const btnCancelEditQuestion = document.getElementById('btn-cancel-edit-question');
+
+  qType.addEventListener('change', () => {
+    const isMc = qType.value === 'multiple_choice';
+    qMcFields.classList.toggle('hidden', !isMc);
+    qSaFields.classList.toggle('hidden', isMc);
+  });
+
+  function resetQuestionForm() {
+    qEditId.value = '';
+    qPrompt.value = '';
+    qType.value = 'multiple_choice';
+    qMcFields.classList.remove('hidden');
+    qSaFields.classList.add('hidden');
+    for (let i = 0; i < 4; i++) {
+      document.getElementById(`q-opt-${i}`).value = '';
+    }
+    const radios = document.querySelectorAll('input[name="q-correct-mc"]');
+    if (radios[0]) radios[0].checked = true;
+    qShortAnswer.value = '';
+    questionFormHeading.textContent = '➕ Thêm Câu Hỏi Mới (Cánh Cửa Mới)';
+    btnCancelEditQuestion.classList.add('hidden');
+  }
+
+  btnCancelEditQuestion.addEventListener('click', resetQuestionForm);
+
+  formQuestion.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const room = store.rooms[session.adminSelectedRoomId];
+    if (!room) return;
+
+    const prompt = qPrompt.value.trim();
+    const type = qType.value;
+    if (!prompt) {
+      showToast('Vui lòng nhập nội dung câu hỏi!', 'error');
+      qPrompt.focus();
+      return;
+    }
+
+    let questionObj = {
+      id: qEditId.value || `q_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      type,
+      prompt,
+    };
+
+    if (type === 'multiple_choice') {
+      const options = [0, 1, 2, 3].map((i) => document.getElementById(`q-opt-${i}`).value.trim());
+      if (options.some((o) => !o)) {
+        showToast('Vui lòng nhập đầy đủ cả 4 đáp án A, B, C, D!', 'error');
+        return;
+      }
+      const checkedRadio = document.querySelector('input[name="q-correct-mc"]:checked');
+      questionObj.options = options;
+      questionObj.correctIndex = checkedRadio ? Number(checkedRadio.value) : 0;
+    } else {
+      const ans = qShortAnswer.value.trim();
+      if (!ans) {
+        showToast('Vui lòng nhập đáp án đúng!', 'error');
+        qShortAnswer.focus();
+        return;
+      }
+      questionObj.correctAnswer = ans;
+    }
+
+    if (qEditId.value) {
+      const idx = room.questions.findIndex((q) => q.id === qEditId.value);
+      if (idx !== -1) room.questions[idx] = questionObj;
+      showToast('Đã cập nhật câu hỏi!', 'success');
+    } else {
+      room.questions.push(questionObj);
+      showToast('Đã thêm câu hỏi mới!', 'success');
+    }
+
+    saveStore(store);
+    resetQuestionForm();
+    renderAdminDashboard();
+  });
+
+  function renderAdminDashboard() {
+    store = loadStore();
+    const roomIds = Object.keys(store.rooms);
+
+    // Render room list
+    adminRoomList.innerHTML = '';
+    if (roomIds.length === 0) {
+      adminRoomList.innerHTML = '<div class="text-sm text-slate-400 font-semibold text-center py-4">Chưa có phòng nào.</div>';
+    } else {
+      if (!session.adminSelectedRoomId || !store.rooms[session.adminSelectedRoomId]) {
+        session.adminSelectedRoomId = roomIds[0];
+      }
+
+      roomIds.forEach((id) => {
+        const r = store.rooms[id];
+        const isActive = id === session.adminSelectedRoomId;
+        const item = document.createElement('div');
+        item.className = `flex items-center justify-between p-3 rounded-2xl border-2 transition cursor-pointer ${
+          isActive ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100 hover:border-indigo-200 bg-slate-50/70'
+        }`;
+        item.innerHTML = `
+          <div class="min-w-0 flex-1">
+            <div class="font-display font-extrabold text-base text-indigo-900 truncate">${escapeHtml(r.id)}</div>
+            <div class="text-xs font-bold text-slate-500 truncate">${escapeHtml(r.title || '')} • ${r.questions.length} cửa • ${r.students.length} HS</div>
+          </div>
+          <button type="button" data-delete-room="${escapeHtml(r.id)}" title="Xóa phòng" class="ml-2 px-2.5 py-1 rounded-lg text-xs font-bold text-rose-600 hover:bg-rose-100 transition cursor-pointer">🗑️</button>
+        `;
+        item.addEventListener('click', (e) => {
+          if (e.target.closest('[data-delete-room]')) return;
+          session.adminSelectedRoomId = r.id;
+          resetQuestionForm();
+          renderAdminDashboard();
+        });
+        item.querySelector('[data-delete-room]').addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (confirm(`Bạn có chắc muốn xóa phòng "${r.id}" không?`)) {
+            delete store.rooms[r.id];
+            saveStore(store);
+            if (session.adminSelectedRoomId === r.id) {
+              session.adminSelectedRoomId = Object.keys(store.rooms)[0] || null;
+            }
+            renderAdminDashboard();
+            showToast(`Đã xóa phòng ${r.id}`, 'info');
+          }
+        });
+        adminRoomList.appendChild(item);
+      });
+    }
+
+    const activeRoom = session.adminSelectedRoomId ? store.rooms[session.adminSelectedRoomId] : null;
+    if (!activeRoom) {
+      adminRoomEmptyState.classList.remove('hidden');
+      adminRoomWorkspace.classList.add('hidden');
+      return;
+    }
+
+    adminRoomEmptyState.classList.add('hidden');
+    adminRoomWorkspace.classList.remove('hidden');
+
+    adminActiveRoomId.textContent = activeRoom.id;
+    adminActiveRoomTitle.textContent = activeRoom.title ? `— ${activeRoom.title}` : '';
+    tabCountQuestions.textContent = activeRoom.questions.length;
+    tabCountStudents.textContent = activeRoom.students.length;
+
+    setAdminTab(session.adminTab);
+    renderAdminQuestionList(activeRoom);
+    renderAdminStudentTable(activeRoom);
+  }
+
+  function renderAdminQuestionList(room) {
+    const listEl = document.getElementById('admin-question-list');
+    listEl.innerHTML = '';
+
+    if (room.questions.length === 0) {
+      listEl.innerHTML = '<div class="text-center py-8 text-slate-400 font-bold">Phòng này chưa có câu hỏi nào. Hãy thêm câu hỏi ở trên nhé!</div>';
+      return;
+    }
+
+    const letters = ['A', 'B', 'C', 'D'];
+    room.questions.forEach((q, idx) => {
+      const card = document.createElement('div');
+      card.className = 'p-4 rounded-2xl border-2 border-slate-100 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3';
+
+      const answerSummary =
+        q.type === 'multiple_choice'
+          ? `Trắc nghiệm • Đáp án đúng: <span class="text-emerald-700">${letters[q.correctIndex]}. ${escapeHtml(q.options[q.correctIndex])}</span>`
+          : `Điền đáp án • Đáp án đúng: <span class="text-emerald-700">${escapeHtml(q.correctAnswer)}</span>`;
+
+      card.innerHTML = `
+        <div class="space-y-1 flex-1">
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-extrabold">Cửa ${idx + 1}</span>
+            <span class="text-xs font-bold text-slate-500">${answerSummary}</span>
+          </div>
+          <div class="font-bold text-slate-800 text-base">${escapeHtml(q.prompt)}</div>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button type="button" data-move-up="${idx}" ${idx === 0 ? 'disabled' : ''} class="px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-35 text-xs font-bold cursor-pointer" title="Lên">⬆️</button>
+          <button type="button" data-move-down="${idx}" ${idx === room.questions.length - 1 ? 'disabled' : ''} class="px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-35 text-xs font-bold cursor-pointer" title="Xuống">⬇️</button>
+          <button type="button" data-edit-q="${q.id}" class="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-extrabold cursor-pointer">✏️ Sửa</button>
+          <button type="button" data-delete-q="${q.id}" class="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-extrabold cursor-pointer">🗑️ Xóa</button>
+        </div>
+      `;
+
+      card.querySelector(`[data-move-up="${idx}"]`).addEventListener('click', () => {
+        if (idx === 0) return;
+        [room.questions[idx - 1], room.questions[idx]] = [room.questions[idx], room.questions[idx - 1]];
+        saveStore(store);
+        renderAdminDashboard();
+      });
+
+      card.querySelector(`[data-move-down="${idx}"]`).addEventListener('click', () => {
+        if (idx >= room.questions.length - 1) return;
+        [room.questions[idx + 1], room.questions[idx]] = [room.questions[idx], room.questions[idx + 1]];
+        saveStore(store);
+        renderAdminDashboard();
+      });
+
+      card.querySelector(`[data-edit-q="${q.id}"]`).addEventListener('click', () => {
+        qEditId.value = q.id;
+        qPrompt.value = q.prompt;
+        qType.value = q.type;
+        const isMc = q.type === 'multiple_choice';
+        qMcFields.classList.toggle('hidden', !isMc);
+        qSaFields.classList.toggle('hidden', isMc);
+        if (isMc) {
+          q.options.forEach((opt, i) => {
+            document.getElementById(`q-opt-${i}`).value = opt;
+          });
+          const radio = document.querySelector(`input[name="q-correct-mc"][value="${q.correctIndex}"]`);
+          if (radio) radio.checked = true;
+        } else {
+          qShortAnswer.value = q.correctAnswer || '';
+        }
+        questionFormHeading.textContent = `✏️ Chỉnh sửa câu hỏi (Cửa ${idx + 1})`;
+        btnCancelEditQuestion.classList.remove('hidden');
+        qPrompt.focus();
+      });
+
+      card.querySelector(`[data-delete-q="${q.id}"]`).addEventListener('click', () => {
+        if (confirm('Bạn có chắc muốn xóa câu hỏi này?')) {
+          room.questions = room.questions.filter((item) => item.id !== q.id);
+          saveStore(store);
+          renderAdminDashboard();
+          showToast('Đã xóa câu hỏi!', 'info');
+        }
+      });
+
+      listEl.appendChild(card);
+    });
+  }
+
+  function renderAdminStudentTable(roomArg = null) {
+    const room = roomArg || store.rooms[session.adminSelectedRoomId];
+    const tbody = document.getElementById('admin-student-tbody');
+    tbody.innerHTML = '';
+
+    if (!room || room.students.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" class="py-8 text-center text-slate-400 font-bold">
+            Chưa có học sinh nào tham gia phòng ${room ? escapeHtml(room.id) : ''}.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    const totalDoors = room.questions.length;
+    room.students
+      .slice()
+      .reverse()
+      .forEach((st) => {
+        const isDone = st.status === 'completed';
+        const progressLabel = isDone
+          ? `Hoàn thành (${totalDoors}/${totalDoors})`
+          : `Cửa ${Math.min(st.currentDoorIndex + 1, Math.max(totalDoors, 1))}/${totalDoors}`;
+
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50/80';
+        tr.innerHTML = `
+          <td class="py-3 px-3 text-slate-800">${escapeHtml(st.name)}</td>
+          <td class="py-3 px-3 font-mono text-xs text-indigo-700">${escapeHtml(st.userId)}</td>
+          <td class="py-3 px-3 text-slate-700">${progressLabel}</td>
+          <td class="py-3 px-3 text-center">
+            <span class="px-2.5 py-0.5 rounded-full ${st.wrongCount > 0 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'} text-xs font-extrabold">
+              ${st.wrongCount}
+            </span>
+          </td>
+          <td class="py-3 px-3">
+            ${
+              isDone
+                ? '<span class="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-extrabold">✅ Đã hoàn thành</span>'
+                : '<span class="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-extrabold">⏳ Đang chơi</span>'
+            }
+          </td>
+          <td class="py-3 px-3 text-right">
+            <button type="button" data-del-student="${escapeHtml(st.userId)}" class="px-2.5 py-1 rounded-lg text-xs font-bold text-rose-600 hover:bg-rose-50 cursor-pointer">Xóa</button>
+          </td>
+        `;
+        tr.querySelector(`[data-del-student="${st.userId}"]`).addEventListener('click', () => {
+          room.students = room.students.filter((item) => item.userId !== st.userId);
+          saveStore(store);
+          renderAdminDashboard();
+        });
+        tbody.appendChild(tr);
+      });
+  }
+
+  // Sync across tabs if Admin is open in another tab
+  window.addEventListener('storage', (e) => {
+    if (e.key === STORAGE_KEY && session.view === 'admin') {
+      renderAdminDashboard();
+    }
+  });
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+})();
