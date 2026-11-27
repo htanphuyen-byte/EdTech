@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=5" />
+  <link rel="stylesheet" href="styles.css?v=6" />
   <script>
     tailwind.config = {
       theme: {
@@ -74,7 +74,7 @@
           Giải Mã Cánh Cửa Bí Mật
         </h1>
         <p class="text-base sm:text-lg text-slate-600 font-semibold mb-6">
-          Nhập mã phòng và tên của bé để bắt đầu hành trình tìm kho báu nhé!
+          Nhập mã phòng và tên Thám Tử để bắt đầu hành trình tìm kho báu nhé!
         </p>
 
         <form id="form-student-join" class="space-y-4 text-left" novalidate>
@@ -93,7 +93,7 @@
 
           <div>
             <label for="input-student-name" class="block text-sm sm:text-base font-extrabold text-indigo-900 mb-1.5 ml-1">
-              🧒 Tên của bé
+              🕵️ Tên Thám Tử
             </label>
             <input
               id="input-student-name"
@@ -133,7 +133,7 @@
               Phòng: <span id="hud-room-id" class="text-indigo-800"></span>
             </div>
             <div class="text-lg sm:text-xl font-display font-extrabold text-slate-800">
-              Bé <span id="hud-student-name" class="text-orange-600"></span>
+              Thám Tử <span id="hud-student-name" class="text-orange-600"></span>
             </div>
           </div>
         </div>
@@ -207,10 +207,10 @@
           HOÀN THÀNH XUẤT SẮC
         </div>
         <h2 class="font-display font-extrabold text-3xl sm:text-4xl text-indigo-900 mb-3">
-          Chúc mừng bé <span id="victory-student-name" class="text-orange-500"></span>!
+          Chúc mừng Thám Tử <span id="victory-student-name" class="text-orange-500"></span>!
         </h2>
         <p class="text-lg text-slate-600 font-bold mb-6">
-          Bé đã giải mã thành công tất cả các cánh cửa bí mật và tìm thấy kho báu rực rỡ! 💎✨
+          Thám Tử đã giải mã thành công tất cả các cánh cửa bí mật và tìm thấy kho báu rực rỡ! 💎✨
         </p>
 
         <div class="grid grid-cols-2 gap-4 mb-7">
@@ -339,7 +339,7 @@
                   <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div class="sm:col-span-2">
                       <label class="block text-xs font-extrabold uppercase text-slate-500 mb-1">Nội dung câu hỏi</label>
-                      <textarea id="q-prompt" rows="2" placeholder="Nhập câu hỏi đố vui cho bé..." class="w-full px-3.5 py-2.5 rounded-xl border-2 border-slate-200 focus:border-indigo-500 outline-none font-bold text-slate-800"></textarea>
+                      <textarea id="q-prompt" rows="2" placeholder="Nhập câu hỏi đố vui cho Thám Tử..." class="w-full px-3.5 py-2.5 rounded-xl border-2 border-slate-200 focus:border-indigo-500 outline-none font-bold text-slate-800"></textarea>
                     </div>
                     <div>
                       <label class="block text-xs font-extrabold uppercase text-slate-500 mb-1">Dạng câu hỏi</label>
@@ -451,7 +451,7 @@
 
       <!-- Short answer container -->
       <form id="modal-sa-form" class="hidden space-y-3 mb-4">
-        <input id="modal-sa-input" type="text" placeholder="Nhập câu trả lời của bé tại đây..." autocomplete="off" class="w-full px-4 py-3.5 rounded-2xl border-3 border-indigo-200 focus:border-indigo-500 outline-none text-lg font-bold text-slate-800 bg-indigo-50/40" />
+        <input id="modal-sa-input" type="text" placeholder="Nhập câu trả lời của Thám Tử tại đây..." autocomplete="off" class="w-full px-4 py-3.5 rounded-2xl border-3 border-indigo-200 focus:border-indigo-500 outline-none text-lg font-bold text-slate-800 bg-indigo-50/40" />
         <button type="submit" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-display font-extrabold text-xl shadow-[0_4px_0_#3730a3] active:translate-y-0.5 transition cursor-pointer">
           Kiểm tra đáp án ✨
         </button>
@@ -523,7 +523,7 @@
   <!-- Firebase SDK (compat) & Config -->
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=5"></script>
-  <script src="app.js?v=5"></script>
+  <script src="firebase-config.js?v=6"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

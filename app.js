@@ -135,7 +135,7 @@
         {
           id: 'q_seed_3',
           type: 'short_answer',
-          prompt: 'Một tuần lễ có tất cả mấy ngày? (Bé hãy điền số nhé)',
+          prompt: 'Một tuần lễ có tất cả mấy ngày? (Thám Tử hãy điền số nhé)',
           correctAnswer: '7',
         },
       ],
@@ -553,12 +553,12 @@
     const studentName = inputStudentName.value.trim();
 
     if (!roomId) {
-      showHomeError('Bé hãy nhập Mã Phòng trước nhé!');
+      showHomeError('Thám Tử hãy nhập Mã Phòng trước nhé!');
       inputRoomId.focus();
       return;
     }
     if (!studentName) {
-      showHomeError('Bé hãy nhập Tên của mình nhé!');
+      showHomeError('Thám Tử hãy nhập Tên của mình nhé!');
       inputStudentName.focus();
       return;
     }
@@ -567,12 +567,12 @@
       await DataService.ensureSeedRoom();
       const room = await DataService.getRoom(roomId);
       if (!room) {
-        showHomeError(`Không tìm thấy phòng "${roomId}". Bé kiểm tra lại mã phòng nhé!`);
+        showHomeError(`Không tìm thấy phòng "${roomId}". Thám Tử kiểm tra lại mã phòng nhé!`);
         return;
       }
 
       if (!room.questions || room.questions.length === 0) {
-        showHomeError(`Phòng "${roomId}" chưa có câu hỏi nào. Bé hãy nhờ thầy/cô thêm câu hỏi nhé!`);
+        showHomeError(`Phòng "${roomId}" chưa có câu hỏi nào. Thám Tử hãy nhờ thầy/cô thêm câu hỏi nhé!`);
         return;
       }
 
@@ -596,7 +596,7 @@
       switchView('game');
     } catch (err) {
       console.error(err);
-      showHomeError('Có lỗi kết nối dữ liệu. Bé thử lại sau nhé!');
+      showHomeError('Có lỗi kết nối dữ liệu. Thám Tử thử lại sau nhé!');
     }
   });
 
@@ -762,7 +762,7 @@
       }
 
       const q = room.questions[student.currentDoorIndex];
-      const wrongMsg = (q && q.wrongHint) || 'Ôi chưa đúng rồi, cánh cửa vẫn khóa chặt! Bé hãy suy nghĩ lại nhé!';
+      const wrongMsg = (q && q.wrongHint) || 'Ôi chưa đúng rồi, cánh cửa vẫn khóa chặt! Thám Tử hãy suy nghĩ lại nhé!';
       showModalFeedback(false, wrongMsg);
       DataService.updateStudent(room.id, student.userId, { wrongCount: student.wrongCount }).catch(console.error);
       return;
@@ -771,7 +771,7 @@
     session.isTransitioningDoor = true;
     SoundFX.unlock();
     Confetti.launch(75);
-    showModalFeedback(true, 'Tuyệt vời! Bé trả lời chính xác rồi! Cánh cửa đang mở ra...');
+    showModalFeedback(true, 'Tuyệt vời! Thám Tử trả lời chính xác rồi! Cánh cửa đang mở ra...');
 
     if (clickedBtn) {
       clickedBtn.classList.add('border-emerald-500', 'bg-emerald-50');
@@ -820,7 +820,7 @@
     const userAns = modalSaInput.value.trim().toLowerCase();
     const expected = String(q.correctAnswer || '').trim().toLowerCase();
     if (!userAns) {
-      showModalFeedback(false, 'Bé hãy nhập câu trả lời vào ô trống nhé!');
+      showModalFeedback(false, 'Thám Tử hãy nhập câu trả lời vào ô trống nhé!');
       modalSaInput.focus();
       return;
     }
