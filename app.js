@@ -111,67 +111,233 @@
     return { launch };
   })();
 
-  // ==================== DATA & STORAGE ====================
-  function createSeedData() {
+  // ==================== SEED DATA ====================
+  function createSeedRoom() {
     return {
-      rooms: {
-        LOP3A: {
-          id: 'LOP3A',
-          title: 'Phòng mẫu Lớp 3A - Khám phá tri thức',
-          createdAt: Date.now(),
-          questions: [
-            {
-              id: 'q_seed_1',
-              type: 'multiple_choice',
-              prompt: 'Con vật nào sau đây thường kêu "Meo meo" và thích bắt chuột?',
-              options: ['Con chó', 'Con mèo', 'Con vịt', 'Con gà'],
-              correctIndex: 1,
-            },
-            {
-              id: 'q_seed_2',
-              type: 'multiple_choice',
-              prompt: 'Kết quả của phép tính 25 + 17 bằng bao nhiêu?',
-              options: ['32', '41', '42', '43'],
-              correctIndex: 2,
-            },
-            {
-              id: 'q_seed_3',
-              type: 'short_answer',
-              prompt: 'Một tuần lễ có tất cả mấy ngày? (Bé hãy điền số nhé)',
-              correctAnswer: '7',
-            },
-          ],
-          students: [],
+      id: 'LOP3A',
+      title: 'Phòng mẫu Lớp 3A - Khám phá tri thức',
+      createdAt: Date.now(),
+      questions: [
+        {
+          id: 'q_seed_1',
+          type: 'multiple_choice',
+          prompt: 'Con vật nào sau đây thường kêu "Meo meo" và thích bắt chuột?',
+          options: ['Con chó', 'Con mèo', 'Con vịt', 'Con gà'],
+          correctIndex: 1,
         },
-      },
+        {
+          id: 'q_seed_2',
+          type: 'multiple_choice',
+          prompt: 'Kết quả của phép tính 25 + 17 bằng bao nhiêu?',
+          options: ['32', '41', '42', '43'],
+          correctIndex: 2,
+        },
+        {
+          id: 'q_seed_3',
+          type: 'short_answer',
+          prompt: 'Một tuần lễ có tất cả mấy ngày? (Bé hãy điền số nhé)',
+          correctAnswer: '7',
+        },
+      ],
     };
   }
 
-  function loadStore() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) {
-        const seed = createSeedData();
-        saveStore(seed);
-        return seed;
-      }
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object' || !parsed.rooms) {
-        const seed = createSeedData();
-        saveStore(seed);
-        return seed;
-      }
-      return parsed;
-    } catch {
-      const seed = createSeedData();
-      saveStore(seed);
-      return seed;
-    }
-  }
+  // ==================== UNIFIED DATA SERVICE (Firebase Firestore or localStorage) ====================
+  const DataService = (() => {
+    const cfg = window.FIREBASE_CONFIG;
+    const hasFirebase =
+      typeof window.firebase !== 'undefined' &&
+      cfg &&
+      typeof cfg.projectId === 'string' &&
+      cfg.projectId.trim().length > 0;
 
-  function saveStore(data) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  }
+    let db = null;
+    if (hasFirebase) {
+      if (!firebase.apps.length) {
+        firebase.initializeApp(cfg);
+      }
+      db = firebase.firestore();
+    }
+
+    // --- LocalStorage helpers ---
+    function loadLocal() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) {
+          const seed = { rooms: { LOP3A: { ...createSeedRoom(), students: [] } } };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
+          return seed;
+        }
+        const parsed = JSON.parse(raw);
+        if (!parsed || !parsed.rooms) {
+          const seed = { rooms: { LOP3A: { ...createSeedRoom(), students: [] } } };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
+          return seed;
+        }
+        return parsed;
+      } catch {
+        const seed = { rooms: { LOP3A: { ...createSeedRoom(), students: [] } } };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
+        return seed;
+      }
+    }
+
+    function saveLocal(data) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    let unsubRooms = null;
+    let unsubStudents = null;
+
+    return {
+      isCloud: hasFirebase,
+
+      async ensureSeedRoom() {
+        if (!hasFirebase) {
+          loadLocal();
+          return;
+        }
+        const ref = db.collection('rooms').doc('LOP3A');
+        const snap = await ref.get();
+        if (!snap.exists) {
+          await ref.set(createSeedRoom());
+        }
+      },
+
+      async getRoom(roomId) {
+        if (!hasFirebase) {
+          const data = loadLocal();
+          return data.rooms[roomId] || null;
+        }
+        const snap = await db.collection('rooms').doc(roomId).get();
+        if (!snap.exists) return null;
+        return snap.data();
+      },
+
+      async getAllRoomsWithCounts() {
+        if (!hasFirebase) {
+          const data = loadLocal();
+          return Object.values(data.rooms).map((r) => ({
+            ...r,
+            studentCount: (r.students || []).length,
+          }));
+        }
+        const snap = await db.collection('rooms').orderBy('createdAt', 'asc').get();
+        const rooms = [];
+        for (const doc of snap.docs) {
+          const r = doc.data();
+          const stSnap = await db.collection('rooms').doc(r.id).collection('students').get();
+          rooms.push({ ...r, studentCount: stSnap.size });
+        }
+        return rooms;
+      },
+
+      async getRoomStudents(roomId) {
+        if (!hasFirebase) {
+          const data = loadLocal();
+          const r = data.rooms[roomId];
+          return r ? r.students || [] : [];
+        }
+        const snap = await db.collection('rooms').doc(roomId).collection('students').get();
+        return snap.docs.map((d) => d.data());
+      },
+
+      async createRoom(roomObj) {
+        if (!hasFirebase) {
+          const data = loadLocal();
+          data.rooms[roomObj.id] = { ...roomObj, students: [] };
+          saveLocal(data);
+          return;
+        }
+        await db.collection('rooms').doc(roomObj.id).set(roomObj);
+      },
+
+      async deleteRoom(roomId) {
+        if (!hasFirebase) {
+          const data = loadLocal();
+          delete data.rooms[roomId];
+          saveLocal(data);
+          return;
+        }
+        const stSnap = await db.collection('rooms').doc(roomId).collection('students').get();
+        const batch = db.batch();
+        stSnap.docs.forEach((d) => batch.delete(d.ref));
+        batch.delete(db.collection('rooms').doc(roomId));
+        await batch.commit();
+      },
+
+      async saveQuestions(roomId, questions) {
+        if (!hasFirebase) {
+          const data = loadLocal();
+          if (data.rooms[roomId]) {
+            data.rooms[roomId].questions = questions;
+            saveLocal(data);
+          }
+          return;
+        }
+        await db.collection('rooms').doc(roomId).update({ questions });
+      },
+
+      async addStudent(roomId, studentObj) {
+        if (!hasFirebase) {
+          const data = loadLocal();
+          if (data.rooms[roomId]) {
+            data.rooms[roomId].students.push(studentObj);
+            saveLocal(data);
+          }
+          return;
+        }
+        await db.collection('rooms').doc(roomId).collection('students').doc(studentObj.userId).set(studentObj);
+      },
+
+      async updateStudent(roomId, userId, patch) {
+        if (!hasFirebase) {
+          const data = loadLocal();
+          const r = data.rooms[roomId];
+          if (r) {
+            const st = r.students.find((s) => s.userId === userId);
+            if (st) Object.assign(st, patch);
+            saveLocal(data);
+          }
+          return;
+        }
+        await db.collection('rooms').doc(roomId).collection('students').doc(userId).update(patch);
+      },
+
+      async deleteStudent(roomId, userId) {
+        if (!hasFirebase) {
+          const data = loadLocal();
+          const r = data.rooms[roomId];
+          if (r) {
+            r.students = r.students.filter((s) => s.userId !== userId);
+            saveLocal(data);
+          }
+          return;
+        }
+        await db.collection('rooms').doc(roomId).collection('students').doc(userId).delete();
+      },
+
+      subscribeAdmin(roomId, onUpdate) {
+        this.unsubscribeAdmin();
+        if (!hasFirebase) return;
+        unsubRooms = db.collection('rooms').onSnapshot(() => onUpdate());
+        if (roomId) {
+          unsubStudents = db.collection('rooms').doc(roomId).collection('students').onSnapshot(() => onUpdate());
+        }
+      },
+
+      unsubscribeAdmin() {
+        if (unsubRooms) {
+          unsubRooms();
+          unsubRooms = null;
+        }
+        if (unsubStudents) {
+          unsubStudents();
+          unsubStudents = null;
+        }
+      },
+    };
+  })();
 
   // ==================== HELPERS ====================
   function normalizeVietnameseName(name) {
@@ -213,19 +379,44 @@
     setTimeout(() => el.remove(), 3000);
   }
 
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   // ==================== APP STATE ====================
-  let store = loadStore();
   let session = {
-    view: 'home', // 'home' | 'game' | 'victory' | 'admin'
-    roomId: null,
-    studentId: null,
+    view: 'home',
+    room: null,
+    student: null,
     adminLoggedIn: false,
     adminSelectedRoomId: 'LOP3A',
-    adminTab: 'questions', // 'questions' | 'students'
+    adminTab: 'questions',
     isTransitioningDoor: false,
+    adminRoomsCache: [],
+    adminStudentsCache: [],
   };
 
-  // ==================== DOM ELEMENTS ====================
+  // Seed initial data on startup
+  DataService.ensureSeedRoom().catch((err) => {
+    console.error('Seed error:', err);
+  });
+
+  // Update sync badge in Admin
+  const adminSyncBadge = document.getElementById('admin-sync-badge');
+  if (DataService.isCloud) {
+    adminSyncBadge.className = 'px-3 py-1.5 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300';
+    adminSyncBadge.textContent = '🟢 Đồng bộ Online (Firebase)';
+  } else {
+    adminSyncBadge.className = 'px-3 py-1.5 rounded-full text-xs font-extrabold bg-amber-100 text-amber-800 border border-amber-300';
+    adminSyncBadge.textContent = '🟡 Offline (localStorage)';
+  }
+
+  // ==================== VIEW SWITCHING ====================
   const views = {
     home: document.getElementById('view-home'),
     game: document.getElementById('view-game'),
@@ -234,6 +425,9 @@
   };
 
   function switchView(viewName) {
+    if (session.view === 'admin' && viewName !== 'admin') {
+      DataService.unsubscribeAdmin();
+    }
     session.view = viewName;
     Object.entries(views).forEach(([key, el]) => {
       el.classList.toggle('hidden', key !== viewName);
@@ -241,7 +435,7 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  // ==================== SOUND TOGGLE ====================
+  // ==================== SOUND TOGGLE & LOGO ====================
   const btnSoundToggle = document.getElementById('btn-sound-toggle');
   const soundIcon = document.getElementById('sound-icon');
   const soundLabel = document.getElementById('sound-label');
@@ -255,8 +449,8 @@
     if (session.view === 'admin') {
       switchView('home');
     } else if (session.view === 'game' || session.view === 'victory') {
-      session.roomId = null;
-      session.studentId = null;
+      session.room = null;
+      session.student = null;
       switchView('home');
     }
   });
@@ -285,10 +479,9 @@
     hideHomeError();
   });
 
-  formStudentJoin.addEventListener('submit', (e) => {
+  formStudentJoin.addEventListener('submit', async (e) => {
     e.preventDefault();
     hideHomeError();
-    store = loadStore();
 
     const roomId = inputRoomId.value.trim().toUpperCase();
     const studentName = inputStudentName.value.trim();
@@ -304,37 +497,41 @@
       return;
     }
 
-    const room = store.rooms[roomId];
-    if (!room) {
-      showHomeError(`Không tìm thấy phòng "${roomId}". Bé kiểm tra lại mã phòng nhé!`);
-      return;
+    try {
+      await DataService.ensureSeedRoom();
+      const room = await DataService.getRoom(roomId);
+      if (!room) {
+        showHomeError(`Không tìm thấy phòng "${roomId}". Bé kiểm tra lại mã phòng nhé!`);
+        return;
+      }
+
+      if (!room.questions || room.questions.length === 0) {
+        showHomeError(`Phòng "${roomId}" chưa có câu hỏi nào. Bé hãy nhờ thầy/cô thêm câu hỏi nhé!`);
+        return;
+      }
+
+      const userId = generateStudentId(studentName);
+      const newStudent = {
+        userId,
+        name: studentName,
+        currentDoorIndex: 0,
+        wrongCount: 0,
+        status: 'playing',
+        joinedAt: Date.now(),
+      };
+
+      await DataService.addStudent(roomId, newStudent);
+
+      session.room = room;
+      session.student = newStudent;
+      session.isTransitioningDoor = false;
+
+      renderGameView();
+      switchView('game');
+    } catch (err) {
+      console.error(err);
+      showHomeError('Có lỗi kết nối dữ liệu. Bé thử lại sau nhé!');
     }
-
-    if (!room.questions || room.questions.length === 0) {
-      showHomeError(`Phòng "${roomId}" chưa có câu hỏi nào. Bé hãy nhờ thầy/cô thêm câu hỏi nhé!`);
-      return;
-    }
-
-    // Auto-generate hidden User ID and save student to room
-    const userId = generateStudentId(studentName);
-    const newStudent = {
-      userId,
-      name: studentName,
-      currentDoorIndex: 0,
-      wrongCount: 0,
-      status: 'playing', // 'playing' | 'completed'
-      joinedAt: Date.now(),
-    };
-
-    room.students.push(newStudent);
-    saveStore(store);
-
-    session.roomId = roomId;
-    session.studentId = userId;
-    session.isTransitioningDoor = false;
-
-    renderGameView();
-    switchView('game');
   });
 
   // ==================== STUDENT GAMEPLAY ====================
@@ -358,16 +555,9 @@
   const modalFeedbackIcon = document.getElementById('modal-feedback-icon');
   const modalFeedbackText = document.getElementById('modal-feedback-text');
 
-  function getActiveRoomAndStudent() {
-    if (!session.roomId || !session.studentId) return { room: null, student: null };
-    const room = store.rooms[session.roomId];
-    if (!room) return { room: null, student: null };
-    const student = room.students.find((s) => s.userId === session.studentId);
-    return { room, student };
-  }
-
   function renderGameView() {
-    const { room, student } = getActiveRoomAndStudent();
+    const room = session.room;
+    const student = session.student;
     if (!room || !student) {
       switchView('home');
       return;
@@ -386,7 +576,6 @@
 
     secretDoor.classList.remove('is-open', 'animate-door-shake');
 
-    // Render progress pills
     hudDoorsTrack.innerHTML = '';
     room.questions.forEach((_, idx) => {
       const pill = document.createElement('div');
@@ -409,7 +598,8 @@
 
   function openCurrentQuestionModal() {
     if (session.isTransitioningDoor) return;
-    const { room, student } = getActiveRoomAndStudent();
+    const room = session.room;
+    const student = session.student;
     if (!room || !student) return;
 
     const q = room.questions[student.currentDoorIndex];
@@ -479,15 +669,14 @@
     el.classList.add('animate-door-shake');
   }
 
-  function handleAnswerAttempt(isCorrect, clickedBtn = null) {
+  async function handleAnswerAttempt(isCorrect, clickedBtn = null) {
     if (session.isTransitioningDoor) return;
-    const { room, student } = getActiveRoomAndStudent();
+    const room = session.room;
+    const student = session.student;
     if (!room || !student) return;
 
     if (!isCorrect) {
-      // WRONG ANSWER: Increment wrong count, shake door & modal, block advancing
       student.wrongCount += 1;
-      saveStore(store);
       hudWrongCount.textContent = student.wrongCount;
 
       SoundFX.wrong();
@@ -499,10 +688,10 @@
       }
 
       showModalFeedback(false, 'Ôi chưa đúng rồi, cánh cửa vẫn khóa chặt! Bé hãy suy nghĩ lại nhé!');
+      DataService.updateStudent(room.id, student.userId, { wrongCount: student.wrongCount }).catch(console.error);
       return;
     }
 
-    // CORRECT ANSWER: Praise, fireworks, open door, save progress
     session.isTransitioningDoor = true;
     SoundFX.unlock();
     Confetti.launch(75);
@@ -516,19 +705,27 @@
       closeQuestionModal();
       secretDoor.classList.add('is-open');
 
-      setTimeout(() => {
+      setTimeout(async () => {
         student.currentDoorIndex += 1;
         if (student.currentDoorIndex >= room.questions.length) {
           student.status = 'completed';
           student.completedAt = Date.now();
-          saveStore(store);
+          await DataService.updateStudent(room.id, student.userId, {
+            currentDoorIndex: student.currentDoorIndex,
+            status: 'completed',
+            completedAt: student.completedAt,
+          }).catch(console.error);
+
           session.isTransitioningDoor = false;
           renderVictoryView(room, student);
           switchView('victory');
           SoundFX.victory();
           Confetti.launch(150);
         } else {
-          saveStore(store);
+          await DataService.updateStudent(room.id, student.userId, {
+            currentDoorIndex: student.currentDoorIndex,
+          }).catch(console.error);
+
           session.isTransitioningDoor = false;
           renderGameView();
         }
@@ -538,7 +735,8 @@
 
   modalSaForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    const { room, student } = getActiveRoomAndStudent();
+    const room = session.room;
+    const student = session.student;
     if (!room || !student) return;
     const q = room.questions[student.currentDoorIndex];
     if (!q) return;
@@ -564,8 +762,8 @@
   document.getElementById('btn-close-question-modal').addEventListener('click', closeQuestionModal);
 
   document.getElementById('btn-exit-game').addEventListener('click', () => {
-    session.roomId = null;
-    session.studentId = null;
+    session.room = null;
+    session.student = null;
     switchView('home');
   });
 
@@ -577,8 +775,8 @@
   }
 
   document.getElementById('btn-victory-home').addEventListener('click', () => {
-    session.roomId = null;
-    session.studentId = null;
+    session.room = null;
+    session.student = null;
     inputStudentName.value = '';
     switchView('home');
   });
@@ -590,10 +788,10 @@
   const adminLoginPass = document.getElementById('admin-login-pass');
   const adminLoginError = document.getElementById('admin-login-error');
 
-  document.getElementById('btn-admin-open').addEventListener('click', () => {
+  document.getElementById('btn-admin-open').addEventListener('click', async () => {
     if (session.adminLoggedIn) {
-      renderAdminDashboard();
       switchView('admin');
+      await renderAdminDashboard();
       return;
     }
     adminLoginError.classList.add('hidden');
@@ -607,15 +805,15 @@
     modalAdminLogin.classList.add('hidden');
   });
 
-  formAdminLogin.addEventListener('submit', (e) => {
+  formAdminLogin.addEventListener('submit', async (e) => {
     e.preventDefault();
     const u = adminLoginUser.value.trim();
     const p = adminLoginPass.value;
     if (u === ADMIN_CREDENTIALS.username && p === ADMIN_CREDENTIALS.password) {
       session.adminLoggedIn = true;
       modalAdminLogin.classList.add('hidden');
-      renderAdminDashboard();
       switchView('admin');
+      await renderAdminDashboard();
     } else {
       adminLoginError.textContent = 'Sai tên đăng nhập hoặc mật khẩu! (Mặc định: admin / 123456)';
       adminLoginError.classList.remove('hidden');
@@ -640,12 +838,11 @@
   const tabCountQuestions = document.getElementById('tab-count-questions');
   const tabCountStudents = document.getElementById('tab-count-students');
 
-  // Create Room
   document.getElementById('btn-random-room-id').addEventListener('click', () => {
     document.getElementById('admin-new-room-id').value = generateRoomId();
   });
 
-  document.getElementById('form-create-room').addEventListener('submit', (e) => {
+  document.getElementById('form-create-room').addEventListener('submit', async (e) => {
     e.preventDefault();
     const idInput = document.getElementById('admin-new-room-id');
     const titleInput = document.getElementById('admin-new-room-title');
@@ -657,28 +854,28 @@
       idInput.focus();
       return;
     }
-    if (store.rooms[roomId]) {
+
+    const existing = await DataService.getRoom(roomId);
+    if (existing) {
       showToast(`Mã phòng "${roomId}" đã tồn tại!`, 'error');
       return;
     }
 
-    store.rooms[roomId] = {
+    await DataService.createRoom({
       id: roomId,
       title: title || `Phòng ${roomId}`,
       createdAt: Date.now(),
       questions: [],
-      students: [],
-    };
-    saveStore(store);
+    });
+
     session.adminSelectedRoomId = roomId;
     idInput.value = '';
     titleInput.value = '';
     resetQuestionForm();
-    renderAdminDashboard();
+    await renderAdminDashboard();
     showToast(`Đã tạo phòng ${roomId}!`, 'success');
   });
 
-  // Switch Admin Tabs
   function setAdminTab(tab) {
     session.adminTab = tab;
     const isQ = tab === 'questions';
@@ -695,19 +892,16 @@
   }
 
   tabBtnQuestions.addEventListener('click', () => setAdminTab('questions'));
-  tabBtnStudents.addEventListener('click', () => {
-    store = loadStore();
+  tabBtnStudents.addEventListener('click', async () => {
     setAdminTab('students');
-    renderAdminStudentTable();
+    await refreshActiveRoomStudents();
   });
 
-  document.getElementById('btn-refresh-students').addEventListener('click', () => {
-    store = loadStore();
-    renderAdminDashboard();
+  document.getElementById('btn-refresh-students').addEventListener('click', async () => {
+    await renderAdminDashboard();
     showToast('Đã cập nhật dữ liệu mới nhất!', 'info');
   });
 
-  // Question Form Logic
   const formQuestion = document.getElementById('form-question');
   const qEditId = document.getElementById('q-edit-id');
   const qPrompt = document.getElementById('q-prompt');
@@ -742,9 +936,9 @@
 
   btnCancelEditQuestion.addEventListener('click', resetQuestionForm);
 
-  formQuestion.addEventListener('submit', (e) => {
+  formQuestion.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const room = store.rooms[session.adminSelectedRoomId];
+    const room = session.adminRoomsCache.find((r) => r.id === session.adminSelectedRoomId);
     if (!room) return;
 
     const prompt = qPrompt.value.trim();
@@ -755,7 +949,7 @@
       return;
     }
 
-    let questionObj = {
+    const questionObj = {
       id: qEditId.value || `q_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
       type,
       prompt,
@@ -780,100 +974,125 @@
       questionObj.correctAnswer = ans;
     }
 
+    const nextQuestions = [...(room.questions || [])];
     if (qEditId.value) {
-      const idx = room.questions.findIndex((q) => q.id === qEditId.value);
-      if (idx !== -1) room.questions[idx] = questionObj;
+      const idx = nextQuestions.findIndex((q) => q.id === qEditId.value);
+      if (idx !== -1) nextQuestions[idx] = questionObj;
       showToast('Đã cập nhật câu hỏi!', 'success');
     } else {
-      room.questions.push(questionObj);
+      nextQuestions.push(questionObj);
       showToast('Đã thêm câu hỏi mới!', 'success');
     }
 
-    saveStore(store);
+    await DataService.saveQuestions(room.id, nextQuestions);
     resetQuestionForm();
-    renderAdminDashboard();
+    await renderAdminDashboard();
   });
 
-  function renderAdminDashboard() {
-    store = loadStore();
-    const roomIds = Object.keys(store.rooms);
+  let isRenderingAdmin = false;
+  async function renderAdminDashboard() {
+    if (isRenderingAdmin) return;
+    isRenderingAdmin = true;
+    try {
+      await DataService.ensureSeedRoom();
+      const rooms = await DataService.getAllRoomsWithCounts();
+      session.adminRoomsCache = rooms;
 
-    // Render room list
-    adminRoomList.innerHTML = '';
-    if (roomIds.length === 0) {
-      adminRoomList.innerHTML = '<div class="text-sm text-slate-400 font-semibold text-center py-4">Chưa có phòng nào.</div>';
-    } else {
-      if (!session.adminSelectedRoomId || !store.rooms[session.adminSelectedRoomId]) {
-        session.adminSelectedRoomId = roomIds[0];
+      adminRoomList.innerHTML = '';
+      if (rooms.length === 0) {
+        adminRoomList.innerHTML = '<div class="text-sm text-slate-400 font-semibold text-center py-4">Chưa có phòng nào.</div>';
+        session.adminSelectedRoomId = null;
+      } else {
+        if (!session.adminSelectedRoomId || !rooms.some((r) => r.id === session.adminSelectedRoomId)) {
+          session.adminSelectedRoomId = rooms[0].id;
+        }
+
+        rooms.forEach((r) => {
+          const isActive = r.id === session.adminSelectedRoomId;
+          const item = document.createElement('div');
+          item.className = `flex items-center justify-between p-3 rounded-2xl border-2 transition cursor-pointer ${
+            isActive ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100 hover:border-indigo-200 bg-slate-50/70'
+          }`;
+          item.innerHTML = `
+            <div class="min-w-0 flex-1">
+              <div class="font-display font-extrabold text-base text-indigo-900 truncate">${escapeHtml(r.id)}</div>
+              <div class="text-xs font-bold text-slate-500 truncate">${escapeHtml(r.title || '')} • ${(r.questions || []).length} cửa • ${r.studentCount} HS</div>
+            </div>
+            <button type="button" data-delete-room="${escapeHtml(r.id)}" title="Xóa phòng" class="ml-2 px-2.5 py-1 rounded-lg text-xs font-bold text-rose-600 hover:bg-rose-100 transition cursor-pointer">🗑️</button>
+          `;
+          item.addEventListener('click', async (e) => {
+            if (e.target.closest('[data-delete-room]')) return;
+            session.adminSelectedRoomId = r.id;
+            resetQuestionForm();
+            await renderAdminDashboard();
+          });
+          item.querySelector('[data-delete-room]').addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (confirm(`Bạn có chắc muốn xóa phòng "${r.id}" không?`)) {
+              await DataService.deleteRoom(r.id);
+              if (session.adminSelectedRoomId === r.id) {
+                session.adminSelectedRoomId = null;
+              }
+              await renderAdminDashboard();
+              showToast(`Đã xóa phòng ${r.id}`, 'info');
+            }
+          });
+          adminRoomList.appendChild(item);
+        });
       }
 
-      roomIds.forEach((id) => {
-        const r = store.rooms[id];
-        const isActive = id === session.adminSelectedRoomId;
-        const item = document.createElement('div');
-        item.className = `flex items-center justify-between p-3 rounded-2xl border-2 transition cursor-pointer ${
-          isActive ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100 hover:border-indigo-200 bg-slate-50/70'
-        }`;
-        item.innerHTML = `
-          <div class="min-w-0 flex-1">
-            <div class="font-display font-extrabold text-base text-indigo-900 truncate">${escapeHtml(r.id)}</div>
-            <div class="text-xs font-bold text-slate-500 truncate">${escapeHtml(r.title || '')} • ${r.questions.length} cửa • ${r.students.length} HS</div>
-          </div>
-          <button type="button" data-delete-room="${escapeHtml(r.id)}" title="Xóa phòng" class="ml-2 px-2.5 py-1 rounded-lg text-xs font-bold text-rose-600 hover:bg-rose-100 transition cursor-pointer">🗑️</button>
-        `;
-        item.addEventListener('click', (e) => {
-          if (e.target.closest('[data-delete-room]')) return;
-          session.adminSelectedRoomId = r.id;
-          resetQuestionForm();
-          renderAdminDashboard();
-        });
-        item.querySelector('[data-delete-room]').addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (confirm(`Bạn có chắc muốn xóa phòng "${r.id}" không?`)) {
-            delete store.rooms[r.id];
-            saveStore(store);
-            if (session.adminSelectedRoomId === r.id) {
-              session.adminSelectedRoomId = Object.keys(store.rooms)[0] || null;
-            }
+      const activeRoom = rooms.find((r) => r.id === session.adminSelectedRoomId) || null;
+      if (!activeRoom) {
+        adminRoomEmptyState.classList.remove('hidden');
+        adminRoomWorkspace.classList.add('hidden');
+        DataService.unsubscribeAdmin();
+        return;
+      }
+
+      adminRoomEmptyState.classList.add('hidden');
+      adminRoomWorkspace.classList.remove('hidden');
+
+      adminActiveRoomId.textContent = activeRoom.id;
+      adminActiveRoomTitle.textContent = activeRoom.title ? `— ${activeRoom.title}` : '';
+      tabCountQuestions.textContent = (activeRoom.questions || []).length;
+
+      setAdminTab(session.adminTab);
+      renderAdminQuestionList(activeRoom);
+      await refreshActiveRoomStudents(activeRoom);
+
+      if (DataService.isCloud && session.view === 'admin') {
+        DataService.subscribeAdmin(activeRoom.id, () => {
+          if (session.view === 'admin') {
             renderAdminDashboard();
-            showToast(`Đã xóa phòng ${r.id}`, 'info');
           }
         });
-        adminRoomList.appendChild(item);
-      });
+      }
+    } finally {
+      isRenderingAdmin = false;
     }
+  }
 
-    const activeRoom = session.adminSelectedRoomId ? store.rooms[session.adminSelectedRoomId] : null;
-    if (!activeRoom) {
-      adminRoomEmptyState.classList.remove('hidden');
-      adminRoomWorkspace.classList.add('hidden');
-      return;
-    }
-
-    adminRoomEmptyState.classList.add('hidden');
-    adminRoomWorkspace.classList.remove('hidden');
-
-    adminActiveRoomId.textContent = activeRoom.id;
-    adminActiveRoomTitle.textContent = activeRoom.title ? `— ${activeRoom.title}` : '';
-    tabCountQuestions.textContent = activeRoom.questions.length;
-    tabCountStudents.textContent = activeRoom.students.length;
-
-    setAdminTab(session.adminTab);
-    renderAdminQuestionList(activeRoom);
-    renderAdminStudentTable(activeRoom);
+  async function refreshActiveRoomStudents(activeRoomArg = null) {
+    const activeRoom = activeRoomArg || session.adminRoomsCache.find((r) => r.id === session.adminSelectedRoomId);
+    if (!activeRoom) return;
+    const students = await DataService.getRoomStudents(activeRoom.id);
+    session.adminStudentsCache = students;
+    tabCountStudents.textContent = students.length;
+    renderAdminStudentTable(activeRoom, students);
   }
 
   function renderAdminQuestionList(room) {
     const listEl = document.getElementById('admin-question-list');
     listEl.innerHTML = '';
+    const questions = room.questions || [];
 
-    if (room.questions.length === 0) {
+    if (questions.length === 0) {
       listEl.innerHTML = '<div class="text-center py-8 text-slate-400 font-bold">Phòng này chưa có câu hỏi nào. Hãy thêm câu hỏi ở trên nhé!</div>';
       return;
     }
 
     const letters = ['A', 'B', 'C', 'D'];
-    room.questions.forEach((q, idx) => {
+    questions.forEach((q, idx) => {
       const card = document.createElement('div');
       card.className = 'p-4 rounded-2xl border-2 border-slate-100 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3';
 
@@ -892,24 +1111,26 @@
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
           <button type="button" data-move-up="${idx}" ${idx === 0 ? 'disabled' : ''} class="px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-35 text-xs font-bold cursor-pointer" title="Lên">⬆️</button>
-          <button type="button" data-move-down="${idx}" ${idx === room.questions.length - 1 ? 'disabled' : ''} class="px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-35 text-xs font-bold cursor-pointer" title="Xuống">⬇️</button>
+          <button type="button" data-move-down="${idx}" ${idx === questions.length - 1 ? 'disabled' : ''} class="px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-35 text-xs font-bold cursor-pointer" title="Xuống">⬇️</button>
           <button type="button" data-edit-q="${q.id}" class="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-extrabold cursor-pointer">✏️ Sửa</button>
           <button type="button" data-delete-q="${q.id}" class="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-extrabold cursor-pointer">🗑️ Xóa</button>
         </div>
       `;
 
-      card.querySelector(`[data-move-up="${idx}"]`).addEventListener('click', () => {
+      card.querySelector(`[data-move-up="${idx}"]`).addEventListener('click', async () => {
         if (idx === 0) return;
-        [room.questions[idx - 1], room.questions[idx]] = [room.questions[idx], room.questions[idx - 1]];
-        saveStore(store);
-        renderAdminDashboard();
+        const next = [...questions];
+        [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+        await DataService.saveQuestions(room.id, next);
+        await renderAdminDashboard();
       });
 
-      card.querySelector(`[data-move-down="${idx}"]`).addEventListener('click', () => {
-        if (idx >= room.questions.length - 1) return;
-        [room.questions[idx + 1], room.questions[idx]] = [room.questions[idx], room.questions[idx + 1]];
-        saveStore(store);
-        renderAdminDashboard();
+      card.querySelector(`[data-move-down="${idx}"]`).addEventListener('click', async () => {
+        if (idx >= questions.length - 1) return;
+        const next = [...questions];
+        [next[idx + 1], next[idx]] = [next[idx], next[idx + 1]];
+        await DataService.saveQuestions(room.id, next);
+        await renderAdminDashboard();
       });
 
       card.querySelector(`[data-edit-q="${q.id}"]`).addEventListener('click', () => {
@@ -933,11 +1154,11 @@
         qPrompt.focus();
       });
 
-      card.querySelector(`[data-delete-q="${q.id}"]`).addEventListener('click', () => {
+      card.querySelector(`[data-delete-q="${q.id}"]`).addEventListener('click', async () => {
         if (confirm('Bạn có chắc muốn xóa câu hỏi này?')) {
-          room.questions = room.questions.filter((item) => item.id !== q.id);
-          saveStore(store);
-          renderAdminDashboard();
+          const next = questions.filter((item) => item.id !== q.id);
+          await DataService.saveQuestions(room.id, next);
+          await renderAdminDashboard();
           showToast('Đã xóa câu hỏi!', 'info');
         }
       });
@@ -946,12 +1167,11 @@
     });
   }
 
-  function renderAdminStudentTable(roomArg = null) {
-    const room = roomArg || store.rooms[session.adminSelectedRoomId];
+  function renderAdminStudentTable(room, students) {
     const tbody = document.getElementById('admin-student-tbody');
     tbody.innerHTML = '';
 
-    if (!room || room.students.length === 0) {
+    if (!room || students.length === 0) {
       tbody.innerHTML = `
         <tr>
           <td colspan="6" class="py-8 text-center text-slate-400 font-bold">
@@ -962,10 +1182,10 @@
       return;
     }
 
-    const totalDoors = room.questions.length;
-    room.students
+    const totalDoors = (room.questions || []).length;
+    students
       .slice()
-      .reverse()
+      .sort((a, b) => (b.joinedAt || 0) - (a.joinedAt || 0))
       .forEach((st) => {
         const isDone = st.status === 'completed';
         const progressLabel = isDone
@@ -994,28 +1214,17 @@
             <button type="button" data-del-student="${escapeHtml(st.userId)}" class="px-2.5 py-1 rounded-lg text-xs font-bold text-rose-600 hover:bg-rose-50 cursor-pointer">Xóa</button>
           </td>
         `;
-        tr.querySelector(`[data-del-student="${st.userId}"]`).addEventListener('click', () => {
-          room.students = room.students.filter((item) => item.userId !== st.userId);
-          saveStore(store);
-          renderAdminDashboard();
+        tr.querySelector(`[data-del-student="${st.userId}"]`).addEventListener('click', async () => {
+          await DataService.deleteStudent(room.id, st.userId);
+          await renderAdminDashboard();
         });
         tbody.appendChild(tr);
       });
   }
 
-  // Sync across tabs if Admin is open in another tab
   window.addEventListener('storage', (e) => {
-    if (e.key === STORAGE_KEY && session.view === 'admin') {
+    if (!DataService.isCloud && e.key === STORAGE_KEY && session.view === 'admin') {
       renderAdminDashboard();
     }
   });
-
-  function escapeHtml(str) {
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
 })();

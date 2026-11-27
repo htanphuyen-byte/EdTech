@@ -251,6 +251,9 @@
           <p class="text-sm text-slate-600 font-semibold">Quản lý phòng chơi, bộ câu hỏi từng cánh cửa và theo dõi tiến độ học sinh</p>
         </div>
         <div class="flex items-center gap-2">
+          <span id="admin-sync-badge" class="px-3 py-1.5 rounded-full text-xs font-extrabold bg-amber-100 text-amber-800 border border-amber-300">
+            🟡 Offline (localStorage)
+          </span>
           <button id="btn-admin-logout" type="button" class="px-4 py-2 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold text-sm transition cursor-pointer">
             Đăng xuất & Về trang chủ
           </button>
@@ -490,6 +493,10 @@
   <!-- Toast Notification -->
   <div id="toast-container" class="fixed bottom-5 right-5 z-50 space-y-2 pointer-events-none"></div>
 
+  <!-- Firebase SDK (compat) & Config -->
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
