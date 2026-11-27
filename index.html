@@ -119,9 +119,12 @@
         </form>
 
         <div class="mt-6 pt-4 border-t-2 border-dashed border-amber-200 flex flex-wrap items-center justify-center gap-2 text-sm text-slate-600 font-semibold">
-          <span>💡 Gợi ý chơi thử ngay:</span>
+          <span>💡 Chơi thử ngay:</span>
+          <button id="btn-fill-rungxanh" type="button" class="px-3 py-1 rounded-full bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-extrabold border border-emerald-300 transition cursor-pointer">
+            🌲 Rừng Xanh (RUNGXANH)
+          </button>
           <button id="btn-fill-sample" type="button" class="px-3 py-1 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-800 font-extrabold border border-amber-300 transition cursor-pointer">
-            Dùng phòng mẫu LOP3A
+            🏫 Phòng mẫu (LOP3A)
           </button>
         </div>
       </div>
@@ -443,7 +446,9 @@
         <span>Câu hỏi mở Cửa số <span id="modal-door-index">1</span></span>
       </div>
 
-      <h3 id="modal-question-prompt" class="font-display font-extrabold text-2xl sm:text-3xl text-indigo-950 leading-snug mb-5"></h3>
+      <img id="modal-question-image" src="" alt="Hình minh họa câu hỏi" class="hidden w-full max-h-64 object-contain rounded-2xl border-2 border-amber-200 bg-amber-50/40 mb-4 mx-auto" />
+
+      <h3 id="modal-question-prompt" class="font-display font-bold text-xl sm:text-2xl text-indigo-950 leading-snug mb-5 whitespace-pre-line"></h3>
 
       <!-- Multiple choice container -->
       <div id="modal-mc-options" class="grid grid-cols-1 gap-3 mb-4"></div>

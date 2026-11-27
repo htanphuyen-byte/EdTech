@@ -142,6 +142,49 @@
     };
   }
 
+  function createRungXanhRoom() {
+    return {
+      id: 'RUNGXANH',
+      title: 'Thám tử nhí – Vụ án Rừng Xanh Kêu Cứu',
+      createdAt: Date.now() + 1,
+      questions: [
+        {
+          id: 'q_rungxanh_1',
+          type: 'short_answer',
+          image: 'images/hien-truong-1.png',
+          prompt:
+            'HIỆN TRƯỜNG 1: TRUY TÌM HÀNH VI GÂY HẠI\nQuan sát tranh trên, có bao nhiêu hành động GÂY HẠI cho môi trường sống của thực vật và động vật? (Nhập 1 chữ số)',
+          correctAnswer: '3',
+          wrongHint: 'Chưa chính xác! Thám tử hãy đếm lại số hành vi gây hại nhé!',
+        },
+        {
+          id: 'q_rungxanh_2',
+          type: 'short_answer',
+          prompt:
+            'HIỆN TRƯỜNG 2: HẬU QUẢ CỦA Ô NHIỄM\nĐọc 3 thông tin thu thập được tại hiện trường:\n(1) Cá sông chết hàng loạt do nước thải.\n(2) Chim chóc kéo về làm tổ nhiều hơn.\n(3) Voi rừng mất nơi ở phải tràn vào làng tìm thức ăn.\n\nCó bao nhiêu thông tin nêu ĐÚNG hậu quả khi môi trường sống bị ô nhiễm? (Nhập 1 chữ số)',
+          correctAnswer: '2',
+          wrongHint: 'Chưa đúng rồi! Thám tử đọc kỹ lại 3 thông tin trên nhé!',
+        },
+        {
+          id: 'q_rungxanh_3',
+          type: 'short_answer',
+          prompt:
+            'HIỆN TRƯỜNG 3: PHÁ GIẢI BÍ ẨN BỜ SUỐI\nTình huống: Tuần trước, nhóm Thám tử đã vớt sạch rác ở bờ suối. Nhưng chỉ 3 ngày sau, rác lại ngập đầy và đàn cá vẫn chết! Thám tử chọn cách nào để cứu đàn cá mãi mãi?\n• Cách 1: Cứ mỗi ngày lại ra vớt rác tiếp.\n• Cách 2: Bắt hết cá ở suối mang về nuôi trong chậu.\n• Cách 3: Vừa dọn rác, vừa đặt thùng rác có nắp, cắm biển "Không xả rác" và tuyên truyền mọi người cùng giữ gìn.\n\nThám tử chọn Cách số mấy để giải quyết tận gốc vấn đề? (Nhập số 1, 2 hoặc 3)',
+          correctAnswer: '3',
+          wrongHint: 'Cách này chưa giải quyết được tận gốc đâu Thám tử ơi! Thử chọn cách khác nhé!',
+        },
+        {
+          id: 'q_rungxanh_4',
+          type: 'short_answer',
+          prompt:
+            'CHẶNG CUỐI: MỞ KHÓA HÒM GIẢI CỨU RỪNG XANH\nHãy ghép 3 chữ số tìm được ở 3 hiện trường để mở khóa Hòm Giải Cứu!',
+          correctAnswer: '323',
+          wrongHint: 'Mật mã sai! Hãy xem lại 3 con số em đã tìm được nhé!',
+        },
+      ],
+    };
+  }
+
   // ==================== UNIFIED DATA SERVICE (Firebase Firestore or localStorage) ====================
   const DataService = (() => {
     const cfg = window.FIREBASE_CONFIG;
@@ -193,14 +236,31 @@
       isCloud: hasFirebase,
 
       async ensureSeedRoom() {
+        const seed = createSeedRoom();
+        const rungXanh = createRungXanhRoom();
         if (!hasFirebase) {
-          loadLocal();
+          const data = loadLocal();
+          let changed = false;
+          if (!data.rooms.LOP3A) {
+            data.rooms.LOP3A = { ...seed, students: [] };
+            changed = true;
+          }
+          if (!data.rooms.RUNGXANH) {
+            data.rooms.RUNGXANH = { ...rungXanh, students: [] };
+            changed = true;
+          }
+          if (changed) saveLocal(data);
           return;
         }
-        const ref = db.collection('rooms').doc('LOP3A');
-        const snap = await ref.get();
-        if (!snap.exists) {
-          await ref.set(createSeedRoom());
+        const refLop = db.collection('rooms').doc('LOP3A');
+        const snapLop = await refLop.get();
+        if (!snapLop.exists) {
+          await refLop.set(seed);
+        }
+        const refRx = db.collection('rooms').doc('RUNGXANH');
+        const snapRx = await refRx.get();
+        if (!snapRx.exists) {
+          await refRx.set(rungXanh);
         }
       },
 
@@ -471,6 +531,14 @@
     homeErrorBox.classList.add('hidden');
   }
 
+  document.getElementById('btn-fill-rungxanh').addEventListener('click', () => {
+    inputRoomId.value = 'RUNGXANH';
+    if (!inputStudentName.value.trim()) {
+      inputStudentName.focus();
+    }
+    hideHomeError();
+  });
+
   document.getElementById('btn-fill-sample').addEventListener('click', () => {
     inputRoomId.value = 'LOP3A';
     if (!inputStudentName.value.trim()) {
@@ -547,6 +615,7 @@
   const modalQuestion = document.getElementById('modal-question');
   const modalQuestionCard = document.getElementById('modal-question-card');
   const modalDoorIndex = document.getElementById('modal-door-index');
+  const modalQuestionImage = document.getElementById('modal-question-image');
   const modalQuestionPrompt = document.getElementById('modal-question-prompt');
   const modalMcOptions = document.getElementById('modal-mc-options');
   const modalSaForm = document.getElementById('modal-sa-form');
@@ -606,6 +675,13 @@
     if (!q) return;
 
     modalDoorIndex.textContent = student.currentDoorIndex + 1;
+    if (q.image) {
+      modalQuestionImage.src = q.image;
+      modalQuestionImage.classList.remove('hidden');
+    } else {
+      modalQuestionImage.src = '';
+      modalQuestionImage.classList.add('hidden');
+    }
     modalQuestionPrompt.textContent = q.prompt;
     hideModalFeedback();
 
@@ -687,7 +763,9 @@
         clickedBtn.classList.add('border-rose-400', 'bg-rose-50');
       }
 
-      showModalFeedback(false, 'Ôi chưa đúng rồi, cánh cửa vẫn khóa chặt! Bé hãy suy nghĩ lại nhé!');
+      const q = room.questions[student.currentDoorIndex];
+      const wrongMsg = (q && q.wrongHint) || 'Ôi chưa đúng rồi, cánh cửa vẫn khóa chặt! Bé hãy suy nghĩ lại nhé!';
+      showModalFeedback(false, wrongMsg);
       DataService.updateStudent(room.id, student.userId, { wrongCount: student.wrongCount }).catch(console.error);
       return;
     }
