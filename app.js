@@ -238,29 +238,38 @@
       async ensureSeedRoom() {
         const seed = createSeedRoom();
         const rungXanh = createRungXanhRoom();
+        const rxSeeded = localStorage.getItem('kho_bau_rx_seeded_v1');
         if (!hasFirebase) {
           const data = loadLocal();
           let changed = false;
-          if (!data.rooms.LOP3A) {
+          if (Object.keys(data.rooms).length === 0 && !localStorage.getItem('kho_bau_lop3a_seeded_v1')) {
             data.rooms.LOP3A = { ...seed, students: [] };
+            localStorage.setItem('kho_bau_lop3a_seeded_v1', '1');
             changed = true;
           }
-          if (!data.rooms.RUNGXANH) {
+          if (!data.rooms.RUNGXANH && !rxSeeded) {
             data.rooms.RUNGXANH = { ...rungXanh, students: [] };
+            localStorage.setItem('kho_bau_rx_seeded_v1', '1');
             changed = true;
           }
           if (changed) saveLocal(data);
           return;
         }
-        const refLop = db.collection('rooms').doc('LOP3A');
-        const snapLop = await refLop.get();
-        if (!snapLop.exists) {
-          await refLop.set(seed);
+        if (!localStorage.getItem('kho_bau_lop3a_seeded_v1')) {
+          const refLop = db.collection('rooms').doc('LOP3A');
+          const snapLop = await refLop.get();
+          if (!snapLop.exists) {
+            await refLop.set(seed);
+          }
+          localStorage.setItem('kho_bau_lop3a_seeded_v1', '1');
         }
-        const refRx = db.collection('rooms').doc('RUNGXANH');
-        const snapRx = await refRx.get();
-        if (!snapRx.exists) {
-          await refRx.set(rungXanh);
+        if (!rxSeeded) {
+          const refRx = db.collection('rooms').doc('RUNGXANH');
+          const snapRx = await refRx.get();
+          if (!snapRx.exists) {
+            await refRx.set(rungXanh);
+          }
+          localStorage.setItem('kho_bau_rx_seeded_v1', '1');
         }
       },
 
@@ -310,6 +319,18 @@
           return;
         }
         await db.collection('rooms').doc(roomObj.id).set(roomObj);
+      },
+
+      async updateRoom(roomId, patch) {
+        if (!hasFirebase) {
+          const data = loadLocal();
+          if (data.rooms[roomId]) {
+            Object.assign(data.rooms[roomId], patch);
+            saveLocal(data);
+          }
+          return;
+        }
+        await db.collection('rooms').doc(roomId).update(patch);
       },
 
       async deleteRoom(roomId) {
@@ -1067,12 +1088,64 @@
     await renderAdminDashboard();
   });
 
+  // ==================== EDIT / DELETE ROOM HANDLERS ====================
+  const modalEditRoom = document.getElementById('modal-edit-room');
+  const formEditRoom = document.getElementById('form-edit-room');
+  const editRoomIdDisplay = document.getElementById('edit-room-id-display');
+  const editRoomTitleInput = document.getElementById('edit-room-title-input');
+
+  function openEditRoomModal(room) {
+    if (!room) return;
+    editRoomIdDisplay.value = room.id;
+    editRoomTitleInput.value = room.title || '';
+    modalEditRoom.classList.remove('hidden');
+    setTimeout(() => editRoomTitleInput.focus(), 60);
+  }
+
+  function closeEditRoomModal() {
+    modalEditRoom.classList.add('hidden');
+  }
+
+  document.getElementById('btn-close-edit-room').addEventListener('click', closeEditRoomModal);
+  document.getElementById('btn-cancel-edit-room').addEventListener('click', closeEditRoomModal);
+
+  formEditRoom.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const roomId = editRoomIdDisplay.value.trim();
+    const newTitle = editRoomTitleInput.value.trim();
+    if (!roomId) return;
+    await DataService.updateRoom(roomId, { title: newTitle || `Phòng ${roomId}` });
+    closeEditRoomModal();
+    await renderAdminDashboard();
+    showToast(`Đã cập nhật tên phòng ${roomId}!`, 'success');
+  });
+
+  async function handleDeleteRoom(roomId) {
+    if (!roomId) return;
+    if (confirm(`Bạn có chắc muốn xóa phòng "${roomId}" và toàn bộ câu hỏi, kết quả học sinh trong phòng này không?`)) {
+      await DataService.deleteRoom(roomId);
+      if (session.adminSelectedRoomId === roomId) {
+        session.adminSelectedRoomId = null;
+      }
+      await renderAdminDashboard();
+      showToast(`Đã xóa phòng ${roomId}!`, 'info');
+    }
+  }
+
+  document.getElementById('btn-edit-active-room').addEventListener('click', () => {
+    const activeRoom = session.adminRoomsCache.find((r) => r.id === session.adminSelectedRoomId);
+    openEditRoomModal(activeRoom);
+  });
+
+  document.getElementById('btn-delete-active-room').addEventListener('click', () => {
+    handleDeleteRoom(session.adminSelectedRoomId);
+  });
+
   let isRenderingAdmin = false;
   async function renderAdminDashboard() {
     if (isRenderingAdmin) return;
     isRenderingAdmin = true;
     try {
-      await DataService.ensureSeedRoom();
       const rooms = await DataService.getAllRoomsWithCounts();
       session.adminRoomsCache = rooms;
 
@@ -1096,24 +1169,24 @@
               <div class="font-display font-extrabold text-base text-indigo-900 truncate">${escapeHtml(r.id)}</div>
               <div class="text-xs font-bold text-slate-500 truncate">${escapeHtml(r.title || '')} • ${(r.questions || []).length} cửa • ${r.studentCount} HS</div>
             </div>
-            <button type="button" data-delete-room="${escapeHtml(r.id)}" title="Xóa phòng" class="ml-2 px-2.5 py-1 rounded-lg text-xs font-bold text-rose-600 hover:bg-rose-100 transition cursor-pointer">🗑️</button>
+            <div class="flex items-center gap-1 ml-2 shrink-0">
+              <button type="button" data-edit-room="${escapeHtml(r.id)}" title="Chỉnh sửa tên phòng" class="px-2 py-1 rounded-lg text-xs font-bold text-indigo-700 hover:bg-indigo-100 transition cursor-pointer">✏️</button>
+              <button type="button" data-delete-room="${escapeHtml(r.id)}" title="Xóa phòng" class="px-2 py-1 rounded-lg text-xs font-bold text-rose-600 hover:bg-rose-100 transition cursor-pointer">🗑️</button>
+            </div>
           `;
           item.addEventListener('click', async (e) => {
-            if (e.target.closest('[data-delete-room]')) return;
+            if (e.target.closest('[data-delete-room]') || e.target.closest('[data-edit-room]')) return;
             session.adminSelectedRoomId = r.id;
             resetQuestionForm();
             await renderAdminDashboard();
           });
+          item.querySelector('[data-edit-room]').addEventListener('click', (e) => {
+            e.stopPropagation();
+            openEditRoomModal(r);
+          });
           item.querySelector('[data-delete-room]').addEventListener('click', async (e) => {
             e.stopPropagation();
-            if (confirm(`Bạn có chắc muốn xóa phòng "${r.id}" không?`)) {
-              await DataService.deleteRoom(r.id);
-              if (session.adminSelectedRoomId === r.id) {
-                session.adminSelectedRoomId = null;
-              }
-              await renderAdminDashboard();
-              showToast(`Đã xóa phòng ${r.id}`, 'info');
-            }
+            await handleDeleteRoom(r.id);
           });
           adminRoomList.appendChild(item);
         });
