@@ -545,22 +545,6 @@
     homeErrorBox.classList.add('hidden');
   }
 
-  document.getElementById('btn-fill-rungxanh').addEventListener('click', () => {
-    inputRoomId.value = 'RUNGXANH';
-    if (!inputStudentName.value.trim()) {
-      inputStudentName.focus();
-    }
-    hideHomeError();
-  });
-
-  document.getElementById('btn-fill-sample').addEventListener('click', () => {
-    inputRoomId.value = 'LOP3A';
-    if (!inputStudentName.value.trim()) {
-      inputStudentName.focus();
-    }
-    hideHomeError();
-  });
-
   formStudentJoin.addEventListener('submit', async (e) => {
     e.preventDefault();
     hideHomeError();
