@@ -238,38 +238,38 @@
       async ensureSeedRoom() {
         const seed = createSeedRoom();
         const rungXanh = createRungXanhRoom();
-        const rxSeeded = localStorage.getItem('kho_bau_rx_seeded_v1');
         if (!hasFirebase) {
           const data = loadLocal();
           let changed = false;
-          if (Object.keys(data.rooms).length === 0 && !localStorage.getItem('kho_bau_lop3a_seeded_v1')) {
-            data.rooms.LOP3A = { ...seed, students: [] };
+          if (!localStorage.getItem('kho_bau_lop3a_seeded_v1')) {
+            if (!data.rooms.LOP3A) {
+              data.rooms.LOP3A = { ...seed, students: [] };
+              changed = true;
+            }
             localStorage.setItem('kho_bau_lop3a_seeded_v1', '1');
-            changed = true;
           }
-          if (!data.rooms.RUNGXANH && !rxSeeded) {
-            data.rooms.RUNGXANH = { ...rungXanh, students: [] };
+          if (!localStorage.getItem('kho_bau_rx_seeded_v1')) {
+            if (!data.rooms.RUNGXANH) {
+              data.rooms.RUNGXANH = { ...rungXanh, students: [] };
+              changed = true;
+            }
             localStorage.setItem('kho_bau_rx_seeded_v1', '1');
-            changed = true;
           }
           if (changed) saveLocal(data);
           return;
         }
-        if (!localStorage.getItem('kho_bau_lop3a_seeded_v1')) {
+        const metaRef = db.collection('meta').doc('seed_v2');
+        const metaSnap = await metaRef.get();
+        if (!metaSnap.exists) {
           const refLop = db.collection('rooms').doc('LOP3A');
           const snapLop = await refLop.get();
-          if (!snapLop.exists) {
-            await refLop.set(seed);
-          }
-          localStorage.setItem('kho_bau_lop3a_seeded_v1', '1');
-        }
-        if (!rxSeeded) {
+          if (!snapLop.exists) await refLop.set(seed);
+
           const refRx = db.collection('rooms').doc('RUNGXANH');
           const snapRx = await refRx.get();
-          if (!snapRx.exists) {
-            await refRx.set(rungXanh);
-          }
-          localStorage.setItem('kho_bau_rx_seeded_v1', '1');
+          if (!snapRx.exists) await refRx.set(rungXanh);
+
+          await metaRef.set({ seededAt: Date.now() });
         }
       },
 
@@ -507,6 +507,7 @@
 
   function switchView(viewName) {
     if (session.view === 'admin' && viewName !== 'admin') {
+      subscribedStudentRoomId = null;
       DataService.unsubscribeAdmin();
     }
     session.view = viewName;
@@ -1122,13 +1123,19 @@
 
   async function handleDeleteRoom(roomId) {
     if (!roomId) return;
-    if (confirm(`Bạn có chắc muốn xóa phòng "${roomId}" và toàn bộ câu hỏi, kết quả học sinh trong phòng này không?`)) {
+    if (!confirm(`Bạn có chắc muốn xóa phòng "${roomId}" và toàn bộ câu hỏi, kết quả học sinh trong phòng này không?`)) {
+      return;
+    }
+    try {
       await DataService.deleteRoom(roomId);
       if (session.adminSelectedRoomId === roomId) {
         session.adminSelectedRoomId = null;
       }
       await renderAdminDashboard();
       showToast(`Đã xóa phòng ${roomId}!`, 'info');
+    } catch (err) {
+      console.error('Delete room error:', err);
+      showToast('Không thể xóa phòng. Vui lòng thử lại!', 'error');
     }
   }
 
@@ -1142,8 +1149,25 @@
   });
 
   let isRenderingAdmin = false;
+  let pendingAdminRender = false;
+  let subscribedStudentRoomId = null;
+
+  function ensureAdminSubscription(activeRoomId) {
+    if (!DataService.isCloud || session.view !== 'admin') return;
+    if (subscribedStudentRoomId === activeRoomId) return;
+    subscribedStudentRoomId = activeRoomId;
+    DataService.subscribeAdmin(activeRoomId, () => {
+      if (session.view === 'admin') {
+        renderAdminDashboard();
+      }
+    });
+  }
+
   async function renderAdminDashboard() {
-    if (isRenderingAdmin) return;
+    if (isRenderingAdmin) {
+      pendingAdminRender = true;
+      return;
+    }
     isRenderingAdmin = true;
     try {
       const rooms = await DataService.getAllRoomsWithCounts();
@@ -1196,6 +1220,7 @@
       if (!activeRoom) {
         adminRoomEmptyState.classList.remove('hidden');
         adminRoomWorkspace.classList.add('hidden');
+        subscribedStudentRoomId = null;
         DataService.unsubscribeAdmin();
         return;
       }
@@ -1210,16 +1235,13 @@
       setAdminTab(session.adminTab);
       renderAdminQuestionList(activeRoom);
       await refreshActiveRoomStudents(activeRoom);
-
-      if (DataService.isCloud && session.view === 'admin') {
-        DataService.subscribeAdmin(activeRoom.id, () => {
-          if (session.view === 'admin') {
-            renderAdminDashboard();
-          }
-        });
-      }
+      ensureAdminSubscription(activeRoom.id);
     } finally {
       isRenderingAdmin = false;
+      if (pendingAdminRender) {
+        pendingAdminRender = false;
+        renderAdminDashboard();
+      }
     }
   }
 
