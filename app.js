@@ -236,39 +236,24 @@
       isCloud: hasFirebase,
 
       async ensureSeedRoom() {
-        const seed = createSeedRoom();
         const rungXanh = createRungXanhRoom();
         if (!hasFirebase) {
           const data = loadLocal();
-          let changed = false;
-          if (!localStorage.getItem('kho_bau_lop3a_seeded_v1')) {
-            if (!data.rooms.LOP3A) {
-              data.rooms.LOP3A = { ...seed, students: [] };
-              changed = true;
-            }
-            localStorage.setItem('kho_bau_lop3a_seeded_v1', '1');
-          }
           if (!localStorage.getItem('kho_bau_rx_seeded_v1')) {
             if (!data.rooms.RUNGXANH) {
               data.rooms.RUNGXANH = { ...rungXanh, students: [] };
-              changed = true;
+              saveLocal(data);
             }
             localStorage.setItem('kho_bau_rx_seeded_v1', '1');
           }
-          if (changed) saveLocal(data);
           return;
         }
-        const metaRef = db.collection('meta').doc('seed_v2');
+        const metaRef = db.collection('meta').doc('seed_rungxanh_v1');
         const metaSnap = await metaRef.get();
         if (!metaSnap.exists) {
-          const refLop = db.collection('rooms').doc('LOP3A');
-          const snapLop = await refLop.get();
-          if (!snapLop.exists) await refLop.set(seed);
-
           const refRx = db.collection('rooms').doc('RUNGXANH');
           const snapRx = await refRx.get();
           if (!snapRx.exists) await refRx.set(rungXanh);
-
           await metaRef.set({ seededAt: Date.now() });
         }
       },
@@ -340,11 +325,18 @@
           saveLocal(data);
           return;
         }
-        const stSnap = await db.collection('rooms').doc(roomId).collection('students').get();
-        const batch = db.batch();
-        stSnap.docs.forEach((d) => batch.delete(d.ref));
-        batch.delete(db.collection('rooms').doc(roomId));
-        await batch.commit();
+        // Delete by exact document ID and also any document matching field id == roomId
+        const docIdsToDelete = new Set([roomId]);
+        const matchSnap = await db.collection('rooms').where('id', '==', roomId).get();
+        matchSnap.docs.forEach((d) => docIdsToDelete.add(d.id));
+
+        for (const docId of docIdsToDelete) {
+          const stSnap = await db.collection('rooms').doc(docId).collection('students').get();
+          const batch = db.batch();
+          stSnap.docs.forEach((d) => batch.delete(d.ref));
+          batch.delete(db.collection('rooms').doc(docId));
+          await batch.commit();
+        }
       },
 
       async saveQuestions(roomId, questions) {
